@@ -1,0 +1,13 @@
+[package]
+name = "artichat"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.29.0"
+crossterm = "0.28.0"
+rand = "0.8.5"
+ring = "0.17.8"
+magic-crypt = "4.0.1"
+aes-gcm = "0.10.3"
+#arti-client = "0.26.0"
