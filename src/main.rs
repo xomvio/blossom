@@ -1,10 +1,11 @@
-use std::{io::{self, Read, Write}, net::{TcpListener, TcpStream, UdpSocket}, vec};
+use std::{io::{self, Read, Write}, net::{TcpListener, TcpStream, UdpSocket}, thread, time, vec};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use magic_crypt::generic_array::GenericArray;
 use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
 use aes_gcm::{
-    aead::{Aead, AeadCore, AeadMut, AeadMutInPlace, KeyInit, OsRng}, aes::cipher, Aes256Gcm, Key, Nonce // Or `Aes128Gcm`
+    aead::{Aead, AeadCore, AeadMut, KeyInit, OsRng, Key}, aes::cipher, Aes256Gcm, Nonce // Or `Aes128Gcm`
 };
+
 
 use utils::generate_aesgcm;
 mod utils;
@@ -71,7 +72,7 @@ impl App {
             roomusers: vec![Line::from(username)],
             history: Vec::new(),
             socket: UdpSocket::bind("127.0.0.1:9090").unwrap(),
-            cipher: generate_aesgcm(roomkey.clone()),
+            cipher: generate_aesgcm(),
             //server: "127.0.0.1:9595".to_string(),
             input: String::new(),
             showkey: false,
@@ -87,7 +88,7 @@ impl App {
             roomusers: vec![Line::from(username)],
             history: Vec::new(),
             socket: UdpSocket::bind("127.0.0.1:9191").unwrap(),
-            cipher: generate_aesgcm(roomkey.clone()),
+            cipher: generate_aesgcm(),
             //server: "127.0.0.1:9595".to_string(),
             input: String::new(),
             showkey: false,
@@ -108,20 +109,17 @@ impl App {
         
         while !self.exit {
 
-            match self.socket.recv_from(&mut buffer) {
+            match self.socket.recv_from(buffer.as_mut()) {
                 Ok((size, src)) => {
-                    let (nonce, ciphertext) = buffer.split_at(12);
-                    //let nonce = GenericArray::from_slice(nonce);
-                    let decrypted = self.decrypt(/*nonce,*/ ciphertext.to_vec());
-                    let msg = String::from_utf8_lossy(&decrypted).to_string();
-                    self.history.push(Line::from(msg));
-                    //self.history.push(Line::from(vec!["[".red().bold(), src.to_string().into(), "] ".red().bold(), String::from_utf8_lossy(&buffer[..size]).to_string().into()]));
+                    //let decrypted = utils::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap();
+                    let decrypted = self.decrypt(&buffer[..size]).unwrap();
+                    self.history.push(Line::from(decrypted));
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     // no incoming data, can do other things
                 }
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    println!("Error: {}", e);
                     break;
                 }
             }
@@ -160,11 +158,10 @@ impl App {
             KeyCode::F(2) => self.showkey = !self.showkey,
             KeyCode::Enter => {
                 self.history.push(Line::from(vec!["[".red().bold(), self.username.clone().into(), "] ".red().bold(), self.input.clone().into()]));
-                let encrypted = self.encrypt(self.username.clone() + "|" + &self.input);
+                let encrypted = utils::encrypt(&self.cipher, self.username.clone() + "|" + &self.input);
+                //self.history.push(Line::from(encrypted.len().to_string()));
+                //let encrypted = self.encrypt(self.username.clone() + "|" + &self.input);
                 self.socket.send(&encrypted).unwrap();
-                //self.history.push(Line::from(String::from_utf8_lossy(&encrypted).to_string()));
-                //let decrypted = utils::decrypt(self.roomkey.clone(), encrypted.to_owned());
-                //self.history.push(Line::from(decrypted));
                 self.input.clear();
             },
             KeyCode::Backspace => {
@@ -179,8 +176,48 @@ impl App {
         self.exit = true;
     }
 
+
     pub fn encrypt(&mut self, message: String) -> Vec<u8> {
-        //let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
+        // Generate a random nonce
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        
+        // Encrypt the message
+        let ciphertext = self.cipher
+            .encrypt(&nonce, message.as_bytes())
+            .expect("encryption failure");
+        
+        // Combine nonce and ciphertext into a single vector
+        let mut encrypted = Vec::new();
+        encrypted.extend_from_slice(&nonce);
+        encrypted.extend_from_slice(&ciphertext);
+        
+        encrypted
+    }
+
+    pub fn decrypt(&mut self, encrypted_data: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+        // The first 12 bytes should be the nonce
+        if encrypted_data.len() < 12 {
+            return Err("Encrypted data too short".into());
+        }
+        
+        // Split the data into nonce and ciphertext
+        let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
+        let nonce = Nonce::from_slice(nonce_bytes);
+        
+        // Decrypt the message
+        let plaintext = self.cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|e| format!("Decryption error: {}", e))?;
+        
+        // Convert the decrypted bytes to a string
+        String::from_utf8(plaintext)
+            .map_err(|e| e.into())
+    }
+
+    /*pub fn encrypt(&mut self, message: String) -> Vec<u8> {
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
+        /*let mut xmessage= Vec::new();
+        xmessage.extend_from_slice(message.as_bytes());*/
         let nonce: [u8; 12] = [0; 12];
         self.cipher.encrypt(&nonce.into(), message.as_bytes()).unwrap()
     }
@@ -188,11 +225,8 @@ impl App {
     pub fn decrypt(&mut self, /*nonce: &GenericArray<u8, cipher::consts::U12>,*/ message: Vec<u8>) -> Vec<u8> {
         //let nonce = GenericArray::from_slice(&nonce);
         let nonce: [u8; 12] = [0; 12];
-        match self.cipher.decrypt(&nonce.into(), message.as_ref()) {
-            Ok(decrypted) => decrypted,
-            Err(e) => panic!("Error decrypting: {}", e)
-        }
-    }
+        self.cipher.decrypt(&nonce.into(), message.as_slice()).unwrap()
+    }*/
 }
 
 impl Widget for &App {

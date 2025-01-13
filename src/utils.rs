@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, net::UdpSocket};
 
 //use ring::{self, aead, rand::{SecureRandom, SystemRandom}};
 //use magic_crypt::{new_magic_crypt, MagicCryptTrait};
@@ -6,8 +6,10 @@ use std::borrow::Cow;
 //use magic_crypt::generic_array::GenericArray;
 use ring::{rand::{SecureRandom, SystemRandom}};
 use aes_gcm::{
-    aead::{Aead, AeadCore, AeadMut, KeyInit, OsRng}, aes::cipher, Aes256Gcm, Key, Nonce // Or `Aes128Gcm`
+    aead::{Aead, AeadCore, AeadMut, KeyInit, OsRng, Key}, aes::cipher, Aes256Gcm, Nonce // Or `Aes128Gcm`
 };
+use rand::{Rng, RngCore};
+
 #[test]
 pub fn test() {
     let roomkey = generate_rnd_str(32);
@@ -26,12 +28,17 @@ pub fn test() {
     assert_eq!(&plaintext, b"plaintext message");
 }
 
-pub fn generate_aesgcm(roomkey: String) -> Aes256Gcm {
+/*pub fn generate_aesgcm(roomkey: String) -> Aes256Gcm {
     let key = Key::<Aes256Gcm>::from_slice(roomkey.as_bytes());
     let cipher = Aes256Gcm::new(&key);
     cipher
+}*/
+pub fn generate_aesgcm() -> Aes256Gcm {
+    let mut rng = rand::thread_rng();
+    let key: [u8; 32] = rng.gen(); // Güvenli bir 32 bayt anahtar oluştur
+    let key = Key::<Aes256Gcm>::from_slice(&key);
+    Aes256Gcm::new(&key)
 }
-
 
 pub fn generate_rnd_str(length: usize) -> String {
     let rng = SystemRandom::new();
@@ -52,4 +59,41 @@ pub fn generate_rnd_str(length: usize) -> String {
         .collect();
 
     random_string
+}
+
+pub fn encrypt(cipher: &Aes256Gcm, message: String) -> Vec<u8> {
+    // Generate a random nonce
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    
+    // Encrypt the message
+    let ciphertext = cipher
+        .encrypt(&nonce, message.as_bytes())
+        .expect("encryption failure");
+    
+    // Combine nonce and ciphertext into a single vector
+    let mut encrypted = Vec::new();
+    encrypted.extend_from_slice(&nonce);
+    encrypted.extend_from_slice(&ciphertext);
+    
+    encrypted
+}
+
+pub fn decrypt(cipher: &Aes256Gcm, encrypted_data: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    // The first 12 bytes should be the nonce
+    if encrypted_data.len() < 12 {
+        return Err("Encrypted data too short".into());
+    }
+    
+    // Split the data into nonce and ciphertext
+    let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
+    let nonce = Nonce::from_slice(nonce_bytes);
+    
+    // Decrypt the message
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|e| format!("Decryption error: {}", e))?;
+    
+    // Convert the decrypted bytes to a string
+    String::from_utf8(plaintext)
+        .map_err(|e| e.into())
 }
