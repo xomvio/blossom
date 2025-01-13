@@ -3,6 +3,7 @@ use std::{borrow::Cow, net::UdpSocket};
 //use ring::{self, aead, rand::{SecureRandom, SystemRandom}};
 //use magic_crypt::{new_magic_crypt, MagicCryptTrait};
 
+use base64::{prelude::BASE64_STANDARD, Engine};
 //use magic_crypt::generic_array::GenericArray;
 use ring::{rand::{SecureRandom, SystemRandom}};
 use aes_gcm::{
@@ -33,11 +34,17 @@ pub fn test() {
     let cipher = Aes256Gcm::new(&key);
     cipher
 }*/
-pub fn generate_aesgcm() -> Aes256Gcm {
-    let mut rng = rand::thread_rng();
-    let key: [u8; 32] = rng.gen(); // Güvenli bir 32 bayt anahtar oluştur
-    let key = Key::<Aes256Gcm>::from_slice(&key);
+pub fn generate_aesgcm(roomkey: String) -> Aes256Gcm {
+    let decoded = BASE64_STANDARD.decode(roomkey).unwrap();
+    let key = Key::<Aes256Gcm>::from_slice(&decoded[32..64]);
     Aes256Gcm::new(&key)
+}
+
+pub fn generate_roomkey() -> [u8; 64] {
+    let mut buf = [0u8; 64];
+    let mut rng = rand::thread_rng();
+    rng.fill_bytes(&mut buf);
+    buf
 }
 
 pub fn generate_rnd_str(length: usize) -> String {
@@ -96,4 +103,13 @@ pub fn decrypt(cipher: &Aes256Gcm, encrypted_data: &[u8]) -> Result<String, Box<
     // Convert the decrypted bytes to a string
     String::from_utf8(plaintext)
         .map_err(|e| e.into())
+}
+
+#[test]
+pub fn test22131() {
+    let mut roomkeytest = String::new();
+    BASE64_STANDARD.encode_string(generate_roomkey(), &mut roomkeytest);
+    let mut rumen = String::new();
+    BASE64_STANDARD.encode_string(generate_roomkey(), &mut rumen);
+    println!("{}{}", rumen, roomkeytest);
 }

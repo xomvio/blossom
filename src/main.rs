@@ -1,11 +1,11 @@
-use std::{io::{self, Read, Write}, net::{TcpListener, TcpStream, UdpSocket}, thread, time, vec};
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use magic_crypt::generic_array::GenericArray;
-use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
+use core::time;
+use std::{io, net::UdpSocket};
+use base64::{prelude::BASE64_STANDARD, Engine};
+use crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::{buffer::Buffer, layout::Rect, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
 use aes_gcm::{
-    aead::{Aead, AeadCore, AeadMut, KeyInit, OsRng, Key}, aes::cipher, Aes256Gcm, Nonce // Or `Aes128Gcm`
+    aead::{Aead, AeadCore, OsRng},Aes256Gcm, Nonce // Or `Aes128Gcm`
 };
-
 
 use utils::generate_aesgcm;
 mod utils;
@@ -28,17 +28,13 @@ fn main() -> io::Result<()> {
     }
     
     let mut terminal = ratatui::init();
-    let app_result;
-   
 
     if username.is_empty() {
         username = utils::generate_rnd_str(10);
     }
-    if roomkey.is_empty() {
-        roomkey = utils::generate_rnd_str(32);
-    }
 
-    app_result = if std::env::args().nth(1).is_some() {
+    let app_result = if roomkey.is_empty() {
+        BASE64_STANDARD.encode_string(utils::generate_roomkey(), &mut roomkey);
         App::create_room(username, roomkey).run(&mut terminal)
     }
     else {
@@ -56,7 +52,6 @@ struct App {
     history: Vec<Line<'static>>,
     socket: UdpSocket,
     cipher: Aes256Gcm,
-    //server: String,
     input: String,
     showkey: bool,
     showusers: bool,
@@ -72,8 +67,7 @@ impl App {
             roomusers: vec![Line::from(username)],
             history: Vec::new(),
             socket: UdpSocket::bind("127.0.0.1:9090").unwrap(),
-            cipher: generate_aesgcm(),
-            //server: "127.0.0.1:9595".to_string(),
+            cipher: generate_aesgcm(roomkey),
             input: String::new(),
             showkey: false,
             showusers: false,
@@ -88,8 +82,7 @@ impl App {
             roomusers: vec![Line::from(username)],
             history: Vec::new(),
             socket: UdpSocket::bind("127.0.0.1:9191").unwrap(),
-            cipher: generate_aesgcm(),
-            //server: "127.0.0.1:9595".to_string(),
+            cipher: generate_aesgcm(roomkey),
             input: String::new(),
             showkey: false,
             showusers: false,
@@ -100,32 +93,30 @@ impl App {
     fn run(&mut self, terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
 
         self.socket.connect("127.0.0.1:9595").unwrap();
-        self.socket.set_nonblocking(true)?;
-
-        /*let socket = UdpSocket::bind("127.0.0.1:9090").unwrap();
-        socket.connect(self.server.as_str()).unwrap();*/
-
-        let mut buffer = [0; 1024];
+        self.socket.set_nonblocking(true).unwrap();
         
-        while !self.exit {
+        let mut buffer = [0; 1024];
 
-            match self.socket.recv_from(buffer.as_mut()) {
-                Ok((size, src)) => {
-                    //let decrypted = utils::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap();
-                    let decrypted = self.decrypt(&buffer[..size]).unwrap();
-                    self.history.push(Line::from(decrypted));
+        while !self.exit {            
+            let message = match self.socket.recv_from(buffer.as_mut()) {
+                Ok((size, _)) => {
+                    utils::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap()
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     // no incoming data, can do other things
+                    String::new()
                 }
                 Err(e) => {
                     println!("Error: {}", e);
                     break;
                 }
-            }
+            };
 
+            if !message.is_empty() {
+                self.history.append(&mut vec![Line::from(message.clone())]);
+            }
             terminal.draw(|f| self.draw(f))?;
-            self.handle_events()?;
+            self.handle_events().unwrap();
         }
         Ok(())
     }
@@ -135,11 +126,17 @@ impl App {
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
-        match event::read()? {
-            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event);
+        if poll(time::Duration::from_millis(100))? {
+            // It's guaranteed that `read` won't block, because `poll` returned
+            // `Ok(true)`.
+            match event::read()? {
+                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                    self.handle_key_event(key_event);
+                }
+                _=> {}
             }
-            _=> {}
+        } else {
+            // Timeout expired, no `Event` is available
         }
         Ok(())
     }
@@ -157,11 +154,10 @@ impl App {
             KeyCode::F(1) => self.showusers = !self.showusers,
             KeyCode::F(2) => self.showkey = !self.showkey,
             KeyCode::Enter => {
-                self.history.push(Line::from(vec!["[".red().bold(), self.username.clone().into(), "] ".red().bold(), self.input.clone().into()]));
-                let encrypted = utils::encrypt(&self.cipher, self.username.clone() + "|" + &self.input);
-                //self.history.push(Line::from(encrypted.len().to_string()));
-                //let encrypted = self.encrypt(self.username.clone() + "|" + &self.input);
-                self.socket.send(&encrypted).unwrap();
+                let mut encrypted = utils::encrypt(&self.cipher, self.username.clone() + "|" + &self.input);
+                let mut data = self.roomkey.as_bytes()[..32].to_vec();
+                data.append(&mut encrypted);
+                self.socket.send(&data).unwrap();
                 self.input.clear();
             },
             KeyCode::Backspace => {
@@ -176,57 +172,6 @@ impl App {
         self.exit = true;
     }
 
-
-    pub fn encrypt(&mut self, message: String) -> Vec<u8> {
-        // Generate a random nonce
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-        
-        // Encrypt the message
-        let ciphertext = self.cipher
-            .encrypt(&nonce, message.as_bytes())
-            .expect("encryption failure");
-        
-        // Combine nonce and ciphertext into a single vector
-        let mut encrypted = Vec::new();
-        encrypted.extend_from_slice(&nonce);
-        encrypted.extend_from_slice(&ciphertext);
-        
-        encrypted
-    }
-
-    pub fn decrypt(&mut self, encrypted_data: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
-        // The first 12 bytes should be the nonce
-        if encrypted_data.len() < 12 {
-            return Err("Encrypted data too short".into());
-        }
-        
-        // Split the data into nonce and ciphertext
-        let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
-        let nonce = Nonce::from_slice(nonce_bytes);
-        
-        // Decrypt the message
-        let plaintext = self.cipher
-            .decrypt(nonce, ciphertext)
-            .map_err(|e| format!("Decryption error: {}", e))?;
-        
-        // Convert the decrypted bytes to a string
-        String::from_utf8(plaintext)
-            .map_err(|e| e.into())
-    }
-
-    /*pub fn encrypt(&mut self, message: String) -> Vec<u8> {
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
-        /*let mut xmessage= Vec::new();
-        xmessage.extend_from_slice(message.as_bytes());*/
-        let nonce: [u8; 12] = [0; 12];
-        self.cipher.encrypt(&nonce.into(), message.as_bytes()).unwrap()
-    }
-
-    pub fn decrypt(&mut self, /*nonce: &GenericArray<u8, cipher::consts::U12>,*/ message: Vec<u8>) -> Vec<u8> {
-        //let nonce = GenericArray::from_slice(&nonce);
-        let nonce: [u8; 12] = [0; 12];
-        self.cipher.decrypt(&nonce.into(), message.as_slice()).unwrap()
-    }*/
 }
 
 impl Widget for &App {
@@ -261,6 +206,9 @@ impl Widget for &App {
         let mut history = Vec::new();
         for message in &self.history {
             history.push(Line::from(message.to_owned()));
+        }
+        if history.len() > (heightleft - 6) as usize {
+            history.drain(0..(history.len() - (heightleft - 6) as usize));
         }
         Paragraph::new(history)
             .block(block.to_owned().title(Line::from(" ArtiChat ").centered()))
