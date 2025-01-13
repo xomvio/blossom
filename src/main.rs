@@ -1,8 +1,8 @@
 use core::time;
 use std::{io, net::UdpSocket};
 use base64::{prelude::BASE64_STANDARD, Engine};
-use crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::{buffer::Buffer, layout::Rect, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
+use crossterm::{event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}};
+use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
 use aes_gcm::{
     aead::{Aead, AeadCore, OsRng},Aes256Gcm, Nonce // Or `Aes128Gcm`
 };
@@ -14,12 +14,14 @@ mod utils;
 fn main() -> io::Result<()> {
     let mut username = String::new();
     let mut roomkey = String::new();
+    let mut port = "9191".to_string();
     for i in 1..std::env::args().len() {
         match std::env::args().nth(i) {
             Some(arg) => {
                 match arg.as_str() {
                     "--username" | "-u" => username = std::env::args().nth(i + 1).unwrap(),
                     "--roomkey" | "-r" => roomkey = std::env::args().nth(i + 1).unwrap(),
+                    "--port" | "-p" => port = std::env::args().nth(i + 1).unwrap(),
                     _ => {}
                 }
             }
@@ -38,7 +40,7 @@ fn main() -> io::Result<()> {
         App::create_room(username, roomkey).run(&mut terminal)
     }
     else {
-        App::join_room(username, roomkey).run(&mut terminal)
+        App::join_room(username, roomkey, port).run(&mut terminal)
     };
     
     ratatui::restore();
@@ -48,6 +50,7 @@ fn main() -> io::Result<()> {
 struct App {
     username: String,
     roomkey: String,
+    roombytes: Vec<u8>,
     roomusers: Vec<Line<'static>>,
     history: Vec<Line<'static>>,
     socket: UdpSocket,
@@ -64,7 +67,8 @@ impl App {
         Self {
             username: username.clone(),
             roomkey: roomkey.clone(),
-            roomusers: vec![Line::from(username)],
+            roombytes: roomkey.as_bytes()[..32].to_vec(),
+            roomusers: vec![],
             history: Vec::new(),
             socket: UdpSocket::bind("127.0.0.1:9090").unwrap(),
             cipher: generate_aesgcm(roomkey),
@@ -75,13 +79,14 @@ impl App {
         }
     }
 
-    fn join_room(username: String, roomkey: String) -> Self {
+    fn join_room(username: String, roomkey: String, port: String) -> Self {
         Self {
             username: username.clone(),
             roomkey: roomkey.clone(),
-            roomusers: vec![Line::from(username)],
+            roombytes: roomkey.as_bytes()[..32].to_vec(),
+            roomusers: vec![],
             history: Vec::new(),
-            socket: UdpSocket::bind("127.0.0.1:9191").unwrap(),
+            socket: UdpSocket::bind(format!("127.0.0.1:{}", port)).unwrap(),
             cipher: generate_aesgcm(roomkey),
             input: String::new(),
             showkey: false,
@@ -97,24 +102,33 @@ impl App {
         
         let mut buffer = [0; 1024];
 
+        let mut data = self.roombytes.clone();
+        data.append(&mut self.username.as_bytes().to_vec());
+        self.socket.send(&data).unwrap();
+
         while !self.exit {            
-            let message = match self.socket.recv_from(buffer.as_mut()) {
+            match self.socket.recv_from(buffer.as_mut()) {
                 Ok((size, _)) => {
-                    utils::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap()
+                    if size < 12 {
+                        let username = String::from_utf8(buffer[..size].as_ref().to_vec()).unwrap();
+                        self.roomusers.push(Line::from(username.clone()).red());
+                        self.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
+                    }
+                    else{
+                        let decrypted = utils::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap();
+                        let (username, message) = decrypted.split_once('|').unwrap();
+                        self.history.append(&mut vec![Line::from(vec!["[".cyan(), username.to_owned().cyan(), "] ".cyan(), message.to_owned().gray()])]);
+                    }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     // no incoming data, can do other things
-                    String::new()
                 }
                 Err(e) => {
                     println!("Error: {}", e);
                     break;
                 }
-            };
-
-            if !message.is_empty() {
-                self.history.append(&mut vec![Line::from(message.clone())]);
             }
+
             terminal.draw(|f| self.draw(f))?;
             self.handle_events().unwrap();
         }
@@ -155,7 +169,7 @@ impl App {
             KeyCode::F(2) => self.showkey = !self.showkey,
             KeyCode::Enter => {
                 let mut encrypted = utils::encrypt(&self.cipher, self.username.clone() + "|" + &self.input);
-                let mut data = self.roomkey.as_bytes()[..32].to_vec();
+                let mut data = self.roombytes.clone();
                 data.append(&mut encrypted);
                 self.socket.send(&data).unwrap();
                 self.input.clear();
