@@ -70,7 +70,7 @@ impl App {
             roombytes: roomkey.as_bytes()[..32].to_vec(),
             roomusers: vec![],
             history: Vec::new(),
-            socket: UdpSocket::bind("127.0.0.1:9090").unwrap(),
+            socket: UdpSocket::bind("[::]:9090").unwrap(),
             cipher: generate_aesgcm(roomkey),
             input: String::new(),
             showkey: false,
@@ -86,7 +86,7 @@ impl App {
             roombytes: roomkey.as_bytes()[..32].to_vec(),
             roomusers: vec![],
             history: Vec::new(),
-            socket: UdpSocket::bind(format!("127.0.0.1:{}", port)).unwrap(),
+            socket: UdpSocket::bind(format!("[::]:{}", port)).unwrap(),
             cipher: generate_aesgcm(roomkey),
             input: String::new(),
             showkey: false,
@@ -97,7 +97,7 @@ impl App {
 
     fn run(&mut self, terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
 
-        self.socket.connect("127.0.0.1:9595").unwrap();
+        self.socket.connect("303:c8b5:db69:fc6d::3131:9595").unwrap();
         self.socket.set_nonblocking(true).unwrap();
         
         let mut buffer = [0; 1024];
@@ -110,7 +110,7 @@ impl App {
             match self.socket.recv_from(buffer.as_mut()) {
                 Ok((size, _)) => {
                     if size < 12 {
-                        let username = String::from_utf8(buffer[..size].as_ref().to_vec()).unwrap();
+                        let username = String::from_utf8(buffer[..size].to_vec()).unwrap();
                         self.roomusers.push(Line::from(username.clone()).red());
                         self.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
                     }

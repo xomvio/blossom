@@ -1,9 +1,7 @@
-use std::{borrow::Cow, net::UdpSocket};
-
-//use ring::{self, aead, rand::{SecureRandom, SystemRandom}};
-//use magic_crypt::{new_magic_crypt, MagicCryptTrait};
+use std::{borrow::Cow, io::Read, net::{TcpListener, UdpSocket}};
 
 use base64::{prelude::BASE64_STANDARD, Engine};
+use i2p::net::ToI2pSocketAddrs;
 //use magic_crypt::generic_array::GenericArray;
 use ring::{rand::{SecureRandom, SystemRandom}};
 use aes_gcm::{
@@ -105,11 +103,18 @@ pub fn decrypt(cipher: &Aes256Gcm, encrypted_data: &[u8]) -> Result<String, Box<
         .map_err(|e| e.into())
 }
 
+
 #[test]
-pub fn test22131() {
-    let mut roomkeytest = String::new();
-    BASE64_STANDARD.encode_string(generate_roomkey(), &mut roomkeytest);
-    let mut rumen = String::new();
-    BASE64_STANDARD.encode_string(generate_roomkey(), &mut rumen);
-    println!("{}{}", rumen, roomkeytest);
+fn test_ygg() {
+    use std::io::{Read, Write};
+
+    //let mut socket = TcpStream::connect("200:da14:11e:8701:d17f:eb9c:581d:14ae:9595").unwrap();    
+    let mut socket = UdpSocket::bind("[::]:0").unwrap();
+    socket.connect("303:c8b5:db69:fc6d::3131:9595").unwrap();
+
+    let mut buffer = [0; 1024];
+
+    socket.send("hello from client".as_bytes()).unwrap();
+    socket.recv(&mut buffer).unwrap();
+    println!("{}", String::from_utf8_lossy(&buffer));
 }
