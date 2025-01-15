@@ -1,16 +1,15 @@
 use core::time;
-use std::{io, net::UdpSocket, process::{Child, Command, Stdio}, thread};
+use std::{io, net::UdpSocket, sync::mpsc::Sender};
 use base64::{prelude::BASE64_STANDARD, Engine};
-use crossterm::{event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}};
+use crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
-use aes_gcm::{
-    aead::{Aead, AeadCore, OsRng},Aes256Gcm, Nonce // Or `Aes128Gcm`
-};
+use aes_gcm::Aes256Gcm;
 
 use utils::generate_aesgcm;
 mod utils;
 mod server;
 mod tests;
+mod yggdrasil;
 
 //building a chat app here
 fn main() -> io::Result<()> {
@@ -50,64 +49,76 @@ fn main() -> io::Result<()> {
 }
 
 struct App {
-    username: String,
-    roomkey: String,
+    ui: UI,
     roombytes: Vec<u8>,
-    roomusers: Vec<Line<'static>>,
-    history: Vec<Line<'static>>,
     connectaddr: String,
     socket: UdpSocket,
     cipher: Aes256Gcm,
+    exit: bool,
+    killer: Killer,
+}
+
+struct UI {
+    username: String,
+    roomkey: String,
+    roomusers: Vec<Line<'static>>,
+    history: Vec<Line<'static>>,
     input: String,
     showkey: bool,
-    showusers: bool,
-    exit: bool,
-    yggtx: Option<std::sync::mpsc::Sender<String>>,
-    servertx: Option<std::sync::mpsc::Sender<String>>,
-    ipaddrtx: Option<std::sync::mpsc::Sender<String>>
+    showusers: bool
+}
+
+struct Killer {
+    yggtx: Option<Sender<bool>>,
+    servertx: Option<Sender<bool>>,
+    ipaddrtx: Option<Sender<bool>>
 }
 
 
 impl App {
 
     fn create_room(username: String, roomkey: String) -> Self {
-        let (connectaddr, yggtx, servertx, ipaddrtx) = server::create().unwrap();
+        let (connectaddr, killer) = server::create().unwrap();
         Self {
-            username: username.clone(),
-            roomkey: roomkey.clone(),
+            ui: UI {
+                username: username.clone(),
+                roomkey: roomkey.clone(),
+                roomusers: vec![],
+                history: Vec::new(),
+                input: String::new(),
+                showkey: true,
+                showusers: true
+            },
             roombytes: roomkey.as_bytes()[..32].to_vec(),
-            roomusers: vec![],
             connectaddr,
-            history: Vec::new(),
             socket: UdpSocket::bind("[::]:9090").unwrap(),
             cipher: generate_aesgcm(roomkey),
-            input: String::new(),
-            showkey: false,
-            showusers: false,
             exit: false,
-            yggtx: Some(yggtx),
-            servertx: Some(servertx),
-            ipaddrtx: Some(ipaddrtx)
+            killer,
         }
     }
 
     fn join_room(username: String, roomkey: String, port: String) -> Self {
         Self {
-            username: username.clone(),
-            roomkey: roomkey.clone(),
+            ui: UI {
+                username: username.clone(),
+                roomkey: roomkey.clone(),
+                roomusers: vec![],
+                history: Vec::new(),
+                input: String::new(),
+                showkey: true,
+                showusers: true
+            },
             roombytes: roomkey.as_bytes()[..32].to_vec(),
-            roomusers: vec![],
-            history: Vec::new(),
             connectaddr: String::new(),
             socket: UdpSocket::bind(format!("[::]:{}", port)).unwrap(),
             cipher: generate_aesgcm(roomkey),
-            input: String::new(),
-            showkey: false,
-            showusers: false,
             exit: false,
-            yggtx: None,
-            servertx: None,
-            ipaddrtx: None
+            killer: Killer {
+                yggtx: None,
+                servertx: None,
+                ipaddrtx: None
+            }
         }
     }
 
@@ -127,7 +138,7 @@ impl App {
         let mut buffer = [0; 1024];
 
         let mut data = self.roombytes.clone();
-        data.append(&mut self.username.as_bytes().to_vec());
+        data.append(&mut self.ui.username.as_bytes().to_vec());
         self.socket.send(&data).unwrap();
 
         while !self.exit {            
@@ -135,13 +146,13 @@ impl App {
                 Ok((size, _)) => {
                     if size < 12 {
                         let username = String::from_utf8(buffer[..size].to_vec()).unwrap();
-                        self.roomusers.push(Line::from(username.clone()).red());
-                        self.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
+                        self.ui.roomusers.push(Line::from(username.clone()).red());
+                        self.ui.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
                     }
                     else{
                         let decrypted = utils::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap();
                         let (username, message) = decrypted.split_once('|').unwrap();
-                        self.history.append(&mut vec![Line::from(vec!["[".cyan(), username.to_owned().cyan(), "] ".cyan(), message.to_owned().gray()])]);
+                        self.ui.history.append(&mut vec![Line::from(vec!["[".cyan(), username.to_owned().cyan(), "] ".cyan(), message.to_owned().gray()])]);
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -157,16 +168,16 @@ impl App {
             self.handle_events().unwrap();
         }
         
-        if let Some(yggtx) = &self.yggtx {
-            yggtx.send("exit".to_string()).unwrap();
+        if let Some(yggtx) = &self.killer.yggtx {
+            yggtx.send(true).unwrap();
         }
         
-        if let Some(servertx) = &self.servertx {
-            servertx.send("exit".to_string()).unwrap();
+        if let Some(servertx) = &self.killer.servertx {
+            servertx.send(true).unwrap();
         }
         
-        if let Some(ipaddrtx) = &self.ipaddrtx {
-            ipaddrtx.send("exit".to_string()).unwrap();
+        if let Some(ipaddrtx) = &self.killer.ipaddrtx {
+            ipaddrtx.send(true).unwrap();
         }
         Ok(())
     }
@@ -201,19 +212,19 @@ impl App {
         }
         
         match key_event.code {
-            KeyCode::F(1) => self.showusers = !self.showusers,
-            KeyCode::F(2) => self.showkey = !self.showkey,
+            KeyCode::F(1) => self.ui.showusers = !self.ui.showusers,
+            KeyCode::F(2) => self.ui.showkey = !self.ui.showkey,
             KeyCode::Enter => {
-                let mut encrypted = utils::encrypt(&self.cipher, self.username.clone() + "|" + &self.input);
+                let mut encrypted = utils::encrypt(&self.cipher, self.ui.username.clone() + "|" + &self.ui.input);
                 let mut data = self.roombytes.clone();
                 data.append(&mut encrypted);
                 self.socket.send(&data).unwrap();
-                self.input.clear();
+                self.ui.input.clear();
             },
             KeyCode::Backspace => {
-                self.input.pop();
+                self.ui.input.pop();
             },
-            KeyCode::Char(c) => self.input.push(c),
+            KeyCode::Char(c) => self.ui.input.push(c),
             _ => {}
         }
     }
@@ -232,19 +243,19 @@ impl Widget for &App {
         let mut widthleft = area.width;
         let mut heightleft = area.height;
         
-        if self.showkey {
+        if self.ui.showkey {
             //widthleft -= 6;
             heightleft -= 3;
-            Paragraph::new(Line::from(self.roomkey.clone()))
+            Paragraph::new(Line::from(self.ui.roomkey.clone()))
                 .block(block.to_owned().title(" Room Key "))
                 .style(style.to_owned())
                 .render(Rect { x: 0, y: 0, width: widthleft, height: 3 }, buf);
         }
 
-        if self.showusers {
+        if self.ui.showusers {
             widthleft -= 20;
             let mut users = Vec::new();
-            for user in self.roomusers.iter() {
+            for user in self.ui.roomusers.iter() {
                 users.push(Line::from(user.clone().to_string()));
             }
             Paragraph::new(users)
@@ -254,7 +265,7 @@ impl Widget for &App {
         }
 
         let mut history = Vec::new();
-        for message in &self.history {
+        for message in &self.ui.history {
             history.push(Line::from(message.to_owned()));
         }
         if history.len() > (heightleft - 6) as usize {
@@ -265,7 +276,7 @@ impl Widget for &App {
             .style(style.to_owned())
             .render(Rect { x: area.width - widthleft, y: area.height - heightleft, width: widthleft, height: heightleft - 4 }, buf);
 
-        let input = Paragraph::new(self.input.clone());
+        let input = Paragraph::new(self.ui.input.clone());
         input.block(block.title(" Message "))
             .style(style)
             .render(Rect { x: area.width - widthleft, y: area.height - 4, width: widthleft, height: 4 }, buf);

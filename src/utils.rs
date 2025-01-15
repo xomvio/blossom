@@ -1,7 +1,8 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
-use ring::rand::{SecureRandom, SystemRandom};
+//use ring::rand::{SecureRandom, SystemRandom};
 use aes_gcm::{aead::{Aead, AeadCore, KeyInit, OsRng, Key}, Aes256Gcm, Nonce};
 use rand::RngCore;
+use ring::rand::{SecureRandom, SystemRandom};
 
 pub fn generate_aesgcm(roomkey: String) -> Aes256Gcm {
     let decoded = BASE64_STANDARD.decode(roomkey).unwrap();
@@ -15,6 +16,13 @@ pub fn generate_roomkey() -> [u8; 64] {
     rng.fill_bytes(&mut buf);
     buf
 }
+
+/*pub fn generate_rnd_str(length: usize) -> String {
+    //let mut rng = rand::thread_rng();
+    let mut buf = vec![0u8; length];
+    OsRng.fill_bytes(&mut buf);
+    String::from_utf8_lossy(&buf).to_string()
+}*/
 
 pub fn generate_rnd_str(length: usize) -> String {
     let rng = SystemRandom::new();

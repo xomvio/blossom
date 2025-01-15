@@ -1,8 +1,7 @@
+#![allow(unused_imports)]
 use std::{net::UdpSocket, process::{Command, Stdio}, thread, time};
-
 use aes_gcm::{aead::Aead, AeadCore, Aes256Gcm, Key, KeyInit};
 use rand::rngs::OsRng;
-
 use crate::utils::generate_rnd_str;
 
 
@@ -35,7 +34,7 @@ fn test_yggdrasil() {
 
     println!("{}", String::from_utf8_lossy(&x.stdout));
 
-    let mut ygg = Command::new("sudo")
+    Command::new("sudo")
         .arg("yggdrasil")
         .arg("-autoconf")
         .arg("-logto")
@@ -52,7 +51,7 @@ fn test_yggdrasil() {
     loop {
         println!("read yggdrasil.log");
         thread::sleep(time::Duration::from_millis(500));
-        let mut log = Command::new("sh")
+        let log = Command::new("sh")
         .arg("-c")
         .arg("cat yggdrasil.log")
         .output()
@@ -74,7 +73,7 @@ fn test_yggdrasil() {
     }
     println!("connectaddr is: {}", connectaddr);
 
-    let mut socket = UdpSocket::bind("[::]:0").unwrap();
+    let /*mut*/ socket = UdpSocket::bind("[::]:0").unwrap();
     socket.connect(connectaddr).unwrap();
 
     let mut buffer = [0; 1024];

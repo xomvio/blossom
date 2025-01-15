@@ -1,95 +1,32 @@
 use core::time;
-use std::{collections::HashMap, io::{Read, Result}, net::{SocketAddr, UdpSocket}, os::unix::fs, process::{Child, Command, Stdio}, sync::mpsc::Sender, thread::{self, spawn, JoinHandle}};
+use std::{collections::HashMap, io::Result, net::{SocketAddr, UdpSocket}, process::{Command, Stdio}, sync::mpsc::Receiver, thread};
 use std::sync::mpsc;
 
-pub fn create() -> Result<(String, Sender<String>, Sender<String>, Sender<String>)> {
-    let (yggtx, yggrx) = mpsc::channel();
-    let yggdrasil = thread::spawn(move || {
-        let mut ygg = Command::new("sh")
-        .arg("-c")
-        .arg("sudo yggdrasil -autoconf -logto yggdrasil.log")
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("there is a problem with yggdrasil");
+use crate::{yggdrasil, Killer};
 
-        let _ = yggrx.recv().unwrap();// wait for exit signal
-        ygg.kill().unwrap();
-        //return ygg;
-    });
-
-    let mut connectaddr = String::new();
-
-    loop {
-        let mut sawmtu = false;
-        match std::fs::File::open("yggdrasil.log") {
-            Ok(mut file) => {
-                let mut buf = String::new();
-                file.read_to_string(&mut buf).unwrap();
-                for line in buf.lines() {
-                    if line.contains("Your IPv6 subnet is") {
-                        if let Some(addr) = line.split("is ").nth(1) {
-                            connectaddr = addr.to_string().replace("::/64", "::1313/64");
-                        }
-                    }
-                    else if line.contains("Interface MTU") {
-                        sawmtu = true;
-                        break;
-                    }
-                }
-            }
-            Err(e) => {
-                
-            }
-        }
-
-        if sawmtu {
-            break;
-        }
-    }
-
-    //panic!("connectaddr is: {}", connectaddr);
-
-    let (ipaddrtx , ipaddrrx) = mpsc::channel();
-    let connectaddr_clone = connectaddr.clone();
-    thread::spawn(move || {
-        let ipaddrchange = Command::new("sh")
-        .arg("-c")
-        .arg(format!("sudo ip -6 addr add {} dev lo", connectaddr_clone))
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("there is a problem with yggdrasil")
-        .wait()
-        .expect("there is a problem with yggdrasil(wait)");
-
-        let _ = ipaddrrx.recv().unwrap();
-
-        let ipaddrdel = Command::new("sh")
-        .arg("-c")
-        .arg(format!("sudo ip -6 addr del {} dev lo", connectaddr_clone))
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("there is a problem with deleting ip address")
-        .wait()
-        .expect("there is a problem with deleting ip address(wait)");
-    });
+pub fn create() -> Result<(String, Killer)> {
     
-    thread::sleep(time::Duration::from_millis(2000));
+    // start yggdrasil and wait for exit signal
+    let yggtx = yggdrasil::handle(); 
+
+    // get yggdrasil ipv6 address
+    let mut connectaddr = yggdrasil::get_ipv6(); 
+
+    // open port and wait for exit signal
+    let ipaddrtx = yggdrasil::open_port(connectaddr.clone());
+    
+    thread::sleep(time::Duration::from_millis(1000));
 
     connectaddr = connectaddr.replace("/64", ":9595");
     let connectaddr_clone = connectaddr.clone();
-    let (servertx, serverrx) = std::sync::mpsc::channel();
-    let udpserver = thread::spawn(move || {
+    let (servertx, serverrx) = mpsc::channel();
+    thread::spawn(move || {
         run(connectaddr_clone, serverrx);
     });
     
 
-    Ok((connectaddr, yggtx, servertx, ipaddrtx))
+    let killer = Killer { yggtx: Some(yggtx), servertx: Some(servertx), ipaddrtx: Some(ipaddrtx) };
+    Ok((connectaddr, killer))
 }
 
 
@@ -98,7 +35,7 @@ struct User {
     pub addr: SocketAddr
 }
 
-fn run(connect_addr: String, serverrx: std::sync::mpsc::Receiver<String>) {
+fn run(connect_addr: String, serverrx: Receiver<bool>) {
     let socket = match UdpSocket::bind(connect_addr) {
         Ok(s) => s,
         Err(e) => panic!("Failed to bind to socket: {}", e),
