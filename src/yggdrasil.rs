@@ -1,35 +1,49 @@
-use std::{io::Read, process::{Command, Stdio}, sync::mpsc::{self, Sender}, thread};
+use std::{io::Read, process::{Child, Command, Stdio}};
 
+pub fn start() -> Child {
 
-pub fn handle() -> Sender<bool> {
-    let (yggtx, yggrx) = mpsc::channel();
-    thread::spawn(move || {
-        let mut ygg = Command::new("sh")
-        .arg("-c")
-        .arg("sudo yggdrasil -autoconf -logto yggdrasil.log")
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("there is a problem with yggdrasil");
+    genconf();
 
-        let _ = yggrx.recv().unwrap(); // wait for exit signal
-        ygg.kill().unwrap();
+    let yggdrasil = useconf(); // spawn doesn't block
 
-        Command::new("sh")
-        .arg("-c")
-        .arg("sudo rm yggdrasil.log")
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("there is a problem with yggdrasil");
-    });
+    yggdrasil
+}
 
-    yggtx
+fn useconf() -> Child {
+    Command::new("sh")
+    .arg("-c")
+    .arg("sudo yggdrasil -useconffile yggdrasil.conf -logto yggdrasil.log")
+    .stdin(Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .spawn() // spawn doesn't block
+    .expect("there is a problem with yggdrasil")
+}
+
+fn genconf(){
+    Command::new("sh")
+    .arg("-c")
+    .arg("sudo yggdrasil -genconf > yggdrasil.conf")
+    .stdin(Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .output()
+    .expect("there is a problem with yggdrasil");
+}
+
+pub fn delconf() {
+    Command::new("sh")
+    .arg("-c")
+    .arg("sudo rm yggdrasil.conf")
+    .stdin(Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .output()
+    .expect("there is a problem with yggdrasil");
 }
 
 pub fn get_ipv6() -> String {
+    //getsubnet().replace("::/64", "::1313/64") // 1313 is dinle's endpoint. port will be 9595 later
     let mut connectaddr = String::new();
     loop {
         let mut sawmtu = false;
@@ -59,33 +73,25 @@ pub fn get_ipv6() -> String {
     connectaddr
 }
 
-pub fn open_port(addr: String) -> Sender<bool> { 
-    let (ipaddrtx , ipaddrrx) = mpsc::channel();
-    thread::spawn(move || {
-        Command::new("sh")
-        .arg("-c")
-        .arg(format!("sudo ip -6 addr add {} dev lo", addr))
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("there is a problem with yggdrasil")
-        .wait()
-        .expect("there is a problem with yggdrasil(wait)");
+pub fn add_addr(addr: String) {
+    Command::new("sh")
+    .arg("-c")
+    .arg(format!("sudo ip -6 addr add {} dev lo", addr))
+    .stdin(Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .output()
+    .expect("there is a problem with yggdrasil");
+}
 
-        let _ = ipaddrrx.recv().unwrap();
-
-        Command::new("sh")
-        .arg("-c")
-        .arg(format!("sudo ip -6 addr del {} dev lo", addr))
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("there is a problem with deleting ip address")
-        .wait()
-        .expect("there is a problem with deleting ip address(wait)");
-    });
-
-    ipaddrtx
+pub fn del_addr(addr: String) {
+    let addr = addr.replace(":9595", "");
+    Command::new("sh")
+    .arg("-c")
+    .arg(format!("sudo ip -6 addr del {} dev lo", addr))
+    .stdin(Stdio::null())
+    .stderr(Stdio::null())
+    .stdout(Stdio::null())
+    .output()
+    .expect("there is a problem with yggdrasil");    
 }

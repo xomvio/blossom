@@ -1,32 +1,34 @@
 use core::time;
-use std::{collections::HashMap, io::Result, net::{SocketAddr, UdpSocket}, process::{Command, Stdio}, sync::mpsc::Receiver, thread};
+use std::{collections::HashMap, io::Result, net::{SocketAddr, UdpSocket}, process::Child, sync::mpsc::{Receiver, Sender}, thread};
 use std::sync::mpsc;
 
-use crate::{yggdrasil, Killer};
+use crate::yggdrasil;
 
-pub fn create() -> Result<(String, Killer)> {
-    
-    // start yggdrasil and wait for exit signal
-    let yggtx = yggdrasil::handle(); 
+pub fn create() -> Result<(String, Child, Sender<()>)> {
+
+    // start yggdrasil and wait for exit signal via yggtx
+    //let yggtx = yggdrasil::start(); 
+    let ygg = yggdrasil::start();
 
     // get yggdrasil ipv6 address
     let mut connectaddr = yggdrasil::get_ipv6(); 
 
-    // open port and wait for exit signal
-    let ipaddrtx = yggdrasil::open_port(connectaddr.clone());
+    // add yggdrasil address to loopback
+    yggdrasil::add_addr(connectaddr.clone());
     
-    thread::sleep(time::Duration::from_millis(1000));
-
+    // include port to ipv6
     connectaddr = connectaddr.replace("/64", ":9595");
+    
+
     let connectaddr_clone = connectaddr.clone();
     let (servertx, serverrx) = mpsc::channel();
-    thread::spawn(move || {
-        run(connectaddr_clone, serverrx);
-    });
+    // start server
+    thread::spawn(move || { run(connectaddr_clone, serverrx); });
     
+    // initialize graceful thread killer
+    //let killer = Killer { yggtx: Some(yggtx), servertx: Some(servertx), ipaddrtx: Some(ipaddrtx) };
 
-    let killer = Killer { yggtx: Some(yggtx), servertx: Some(servertx), ipaddrtx: Some(ipaddrtx) };
-    Ok((connectaddr, killer))
+    Ok((connectaddr, ygg, servertx))
 }
 
 
@@ -35,10 +37,12 @@ struct User {
     pub addr: SocketAddr
 }
 
-fn run(connect_addr: String, serverrx: Receiver<bool>) {
-    let socket = match UdpSocket::bind(connect_addr) {
+fn run(connect_addr: String, serverrx: Receiver<()>) {
+    //panic!("Yggdrasil IPv6 address: {}", connect_addr);
+    thread::sleep(time::Duration::from_millis(2000));
+    let socket = match UdpSocket::bind(connect_addr.clone()) {
         Ok(s) => s,
-        Err(e) => panic!("Failed to bind to socket: {}", e),
+        Err(e) => panic!("Failed to bind to socket: {}\n{}", e, connect_addr),
     };
 
     let mut rooms: HashMap<String, Vec<User>> = HashMap::new();

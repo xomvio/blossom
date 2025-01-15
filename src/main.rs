@@ -1,5 +1,5 @@
 use core::time;
-use std::{io, net::UdpSocket, sync::mpsc::Sender};
+use std::{io, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
@@ -55,7 +55,8 @@ struct App {
     socket: UdpSocket,
     cipher: Aes256Gcm,
     exit: bool,
-    killer: Killer,
+    yggdr: Child,
+    servershutter: Option<Sender<()>>,
 }
 
 struct UI {
@@ -68,17 +69,12 @@ struct UI {
     showusers: bool
 }
 
-struct Killer {
-    yggtx: Option<Sender<bool>>,
-    servertx: Option<Sender<bool>>,
-    ipaddrtx: Option<Sender<bool>>
-}
 
 
 impl App {
 
     fn create_room(username: String, roomkey: String) -> Self {
-        let (connectaddr, killer) = server::create().unwrap();
+        let (connectaddr, yggdr, servershutter) = server::create().unwrap();
         Self {
             ui: UI {
                 username: username.clone(),
@@ -94,7 +90,8 @@ impl App {
             socket: UdpSocket::bind("[::]:9090").unwrap(),
             cipher: generate_aesgcm(roomkey),
             exit: false,
-            killer,
+            yggdr,
+            servershutter: Some(servershutter)
         }
     }
 
@@ -114,11 +111,8 @@ impl App {
             socket: UdpSocket::bind(format!("[::]:{}", port)).unwrap(),
             cipher: generate_aesgcm(roomkey),
             exit: false,
-            killer: Killer {
-                yggtx: None,
-                servertx: None,
-                ipaddrtx: None
-            }
+            yggdr: todo!(),
+            servershutter: None
         }
     }
 
@@ -136,6 +130,8 @@ impl App {
 
         
         let mut buffer = [0; 1024];
+
+        thread::sleep(time::Duration::from_millis(3000));
 
         let mut data = self.roombytes.clone();
         data.append(&mut self.ui.username.as_bytes().to_vec());
@@ -159,7 +155,7 @@ impl App {
                     // no incoming data, can do other things
                 }
                 Err(e) => {
-                    println!("Error: {}", e);
+                    println!("Error: ha!{}", e);
                     break;
                 }
             }
@@ -168,17 +164,16 @@ impl App {
             self.handle_events().unwrap();
         }
         
-        if let Some(yggtx) = &self.killer.yggtx {
-            yggtx.send(true).unwrap();
+
+        // graceful shutdown
+        self.yggdr.kill().unwrap();
+        if let Some(servershutter) = &self.servershutter {
+            servershutter.send(()).unwrap();
+            yggdrasil::del_addr(self.connectaddr.clone());
         }
-        
-        if let Some(servertx) = &self.killer.servertx {
-            servertx.send(true).unwrap();
-        }
-        
-        if let Some(ipaddrtx) = &self.killer.ipaddrtx {
-            ipaddrtx.send(true).unwrap();
-        }
+        yggdrasil::delconf();
+
+
         Ok(())
     }
 
