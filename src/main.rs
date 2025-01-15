@@ -1,5 +1,5 @@
 use core::time;
-use std::{io, net::UdpSocket};
+use std::{io, net::UdpSocket, process::{Command, Stdio}, thread};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use crossterm::{event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}};
 use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
@@ -9,6 +9,7 @@ use aes_gcm::{
 
 use utils::generate_aesgcm;
 mod utils;
+mod server;
 
 //building a chat app here
 fn main() -> io::Result<()> {
@@ -53,6 +54,7 @@ struct App {
     roombytes: Vec<u8>,
     roomusers: Vec<Line<'static>>,
     history: Vec<Line<'static>>,
+    connectaddr: String,
     socket: UdpSocket,
     cipher: Aes256Gcm,
     input: String,
@@ -69,6 +71,7 @@ impl App {
             roomkey: roomkey.clone(),
             roombytes: roomkey.as_bytes()[..32].to_vec(),
             roomusers: vec![],
+            connectaddr: server::create().unwrap(),
             history: Vec::new(),
             socket: UdpSocket::bind("[::]:9090").unwrap(),
             cipher: generate_aesgcm(roomkey),
@@ -86,6 +89,7 @@ impl App {
             roombytes: roomkey.as_bytes()[..32].to_vec(),
             roomusers: vec![],
             history: Vec::new(),
+            connectaddr: String::new(),
             socket: UdpSocket::bind(format!("[::]:{}", port)).unwrap(),
             cipher: generate_aesgcm(roomkey),
             input: String::new(),
@@ -95,10 +99,18 @@ impl App {
         }
     }
 
-    fn run(&mut self, terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
 
-        self.socket.connect("303:c8b5:db69:fc6d::3131:9595").unwrap();
+    fn run(&mut self, terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
+        //let connectaddr = server::create().unwrap();
+        match self.socket.connect(self.connectaddr.clone()) {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(e);
+            }
+        }
+        //self.socket.connect("303:c8b5:db69:fc6d::3131:9595").unwrap();
         self.socket.set_nonblocking(true).unwrap();
+
         
         let mut buffer = [0; 1024];
 
