@@ -1,25 +1,28 @@
 use core::time;
-use std::{collections::HashMap, io::{Read, Result}, net::{SocketAddr, UdpSocket}, os::unix::fs, process::{Command, Stdio}, thread::{self, spawn}};
+use std::{collections::HashMap, io::{Read, Result}, net::{SocketAddr, UdpSocket}, os::unix::fs, process::{Child, Command, Stdio}, sync::mpsc::Sender, thread::{self, spawn, JoinHandle}};
+use std::sync::mpsc;
 
-
-pub fn create() -> Result<String> {
+pub fn create() -> Result<(String, Sender<String>, Sender<String>, Sender<String>)> {
+    let (yggtx, yggrx) = mpsc::channel();
     let yggdrasil = thread::spawn(move || {
-        let ygg = Command::new("sh")
+        let mut ygg = Command::new("sh")
         .arg("-c")
         .arg("sudo yggdrasil -autoconf -logto yggdrasil.log")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .stdout(Stdio::null())
         .spawn()
-        .expect("there is a problem with yggdrasil")
-        .wait()
-        .expect("there is a problem with yggdrasil(wait)");
+        .expect("there is a problem with yggdrasil");
+
+        let _ = yggrx.recv().unwrap();// wait for exit signal
+        ygg.kill().unwrap();
+        //return ygg;
     });
-    
+
     let mut connectaddr = String::new();
 
     loop {
-        //thread::sleep(time::Duration::from_millis(500));
+        let mut sawmtu = false;
         match std::fs::File::open("yggdrasil.log") {
             Ok(mut file) => {
                 let mut buf = String::new();
@@ -28,8 +31,11 @@ pub fn create() -> Result<String> {
                     if line.contains("Your IPv6 subnet is") {
                         if let Some(addr) = line.split("is ").nth(1) {
                             connectaddr = addr.to_string().replace("::/64", "::1313/64");
-                            break;
                         }
+                    }
+                    else if line.contains("Interface MTU") {
+                        sawmtu = true;
+                        break;
                     }
                 }
             }
@@ -38,17 +44,19 @@ pub fn create() -> Result<String> {
             }
         }
 
-        if !connectaddr.is_empty() {
+        if sawmtu {
             break;
         }
     }
 
     //panic!("connectaddr is: {}", connectaddr);
-    thread::sleep(time::Duration::from_millis(3000));
 
-    let ipaddrchange = Command::new("sh")
+    let (ipaddrtx , ipaddrrx) = mpsc::channel();
+    let connectaddr_clone = connectaddr.clone();
+    thread::spawn(move || {
+        let ipaddrchange = Command::new("sh")
         .arg("-c")
-        .arg(format!("sudo ip -6 addr add {} dev lo", connectaddr))
+        .arg(format!("sudo ip -6 addr add {} dev lo", connectaddr_clone))
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .stdout(Stdio::null())
@@ -57,14 +65,31 @@ pub fn create() -> Result<String> {
         .wait()
         .expect("there is a problem with yggdrasil(wait)");
 
+        let _ = ipaddrrx.recv().unwrap();
+
+        let ipaddrdel = Command::new("sh")
+        .arg("-c")
+        .arg(format!("sudo ip -6 addr del {} dev lo", connectaddr_clone))
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .spawn()
+        .expect("there is a problem with deleting ip address")
+        .wait()
+        .expect("there is a problem with deleting ip address(wait)");
+    });
+    
+    thread::sleep(time::Duration::from_millis(2000));
+
     connectaddr = connectaddr.replace("/64", ":9595");
     let connectaddr_clone = connectaddr.clone();
-    let server = thread::spawn(move || {
-        run(connectaddr_clone);
+    let (servertx, serverrx) = std::sync::mpsc::channel();
+    let udpserver = thread::spawn(move || {
+        run(connectaddr_clone, serverrx);
     });
+    
 
-
-    Ok(connectaddr)
+    Ok((connectaddr, yggtx, servertx, ipaddrtx))
 }
 
 
@@ -73,7 +98,7 @@ struct User {
     pub addr: SocketAddr
 }
 
-fn run(connect_addr: String) {
+fn run(connect_addr: String, serverrx: std::sync::mpsc::Receiver<String>) {
     let socket = match UdpSocket::bind(connect_addr) {
         Ok(s) => s,
         Err(e) => panic!("Failed to bind to socket: {}", e),
@@ -84,6 +109,9 @@ fn run(connect_addr: String) {
         let mut buffer = [0; 1024];
         match socket.recv_from(&mut buffer) {
             Ok((size, addr)) => {
+                if serverrx.try_recv().is_ok() { // exit signal check
+                    break;
+                }
                 //println!("Request: {}", String::from_utf8_lossy(&buffer));
                 let room: String = String::from_utf8_lossy(&buffer[..32]).to_string();
                 match rooms.get_mut(&room) {// is there a room with this id

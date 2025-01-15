@@ -1,5 +1,5 @@
 use core::time;
-use std::{io, net::UdpSocket, process::{Command, Stdio}, thread};
+use std::{io, net::UdpSocket, process::{Child, Command, Stdio}, thread};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use crossterm::{event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}};
 use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
@@ -10,6 +10,7 @@ use aes_gcm::{
 use utils::generate_aesgcm;
 mod utils;
 mod server;
+mod tests;
 
 //building a chat app here
 fn main() -> io::Result<()> {
@@ -61,17 +62,22 @@ struct App {
     showkey: bool,
     showusers: bool,
     exit: bool,
+    yggtx: Option<std::sync::mpsc::Sender<String>>,
+    servertx: Option<std::sync::mpsc::Sender<String>>,
+    ipaddrtx: Option<std::sync::mpsc::Sender<String>>
 }
+
 
 impl App {
 
     fn create_room(username: String, roomkey: String) -> Self {
+        let (connectaddr, yggtx, servertx, ipaddrtx) = server::create().unwrap();
         Self {
             username: username.clone(),
             roomkey: roomkey.clone(),
             roombytes: roomkey.as_bytes()[..32].to_vec(),
             roomusers: vec![],
-            connectaddr: server::create().unwrap(),
+            connectaddr,
             history: Vec::new(),
             socket: UdpSocket::bind("[::]:9090").unwrap(),
             cipher: generate_aesgcm(roomkey),
@@ -79,6 +85,9 @@ impl App {
             showkey: false,
             showusers: false,
             exit: false,
+            yggtx: Some(yggtx),
+            servertx: Some(servertx),
+            ipaddrtx: Some(ipaddrtx)
         }
     }
 
@@ -96,6 +105,9 @@ impl App {
             showkey: false,
             showusers: false,
             exit: false,
+            yggtx: None,
+            servertx: None,
+            ipaddrtx: None
         }
     }
 
@@ -143,6 +155,18 @@ impl App {
 
             terminal.draw(|f| self.draw(f))?;
             self.handle_events().unwrap();
+        }
+        
+        if let Some(yggtx) = &self.yggtx {
+            yggtx.send("exit".to_string()).unwrap();
+        }
+        
+        if let Some(servertx) = &self.servertx {
+            servertx.send("exit".to_string()).unwrap();
+        }
+        
+        if let Some(ipaddrtx) = &self.ipaddrtx {
+            ipaddrtx.send("exit".to_string()).unwrap();
         }
         Ok(())
     }

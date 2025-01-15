@@ -1,0 +1,25 @@
+2025/01/15 19:33:47 Build name: yggdrasil
+2025/01/15 19:33:47 Build version: 0.5.12
+2025/01/15 19:33:47 Your public key is c5be86fa0864599463354cbcb4e050d1966dea93f7785091160386bc9044da58
+2025/01/15 19:33:47 Your IPv6 address is 200:7482:f20b:ef37:4cd7:3995:6686:963f
+2025/01/15 19:33:47 Your IPv6 subnet is 300:7482:f20b:ef37::/64
+2025/01/15 19:33:47 UNIX admin socket listening on /var/run/yggdrasil.sock
+2025/01/15 19:33:47 TLS listener started on [fe80::da5e:d3ff:fefd:746f%enp9s0]:44643
+2025/01/15 19:33:47 Interface name: tun0
+2025/01/15 19:33:47 Interface IPv6: 200:7482:f20b:ef37:4cd7:3995:6686:963f/7
+2025/01/15 19:33:47 Interface MTU: 65535
+2025/01/15 19:33:52 Stopping multicast module
+2025/01/15 19:33:52 Stopping...
+2025/01/15 19:33:52 Error reading TUN: read /dev/net/tun: file already closed
+2025/01/15 19:33:52 TLS listener stopped on [fe80::da5e:d3ff:fefd:746f%enp9s0]:44643
+2025/01/15 19:33:52 Stopped
+2025/01/15 19:34:50 Build name: yggdrasil
+2025/01/15 19:34:50 Build version: 0.5.12
+2025/01/15 19:34:50 Your public key is e8fc6b551f9d22015c9d0df5c1f65807a15178ccee2dfac13cb45e7a3f75a768
+2025/01/15 19:34:50 Your IPv6 address is 200:2e07:2955:c0c5:bbfd:46c5:e414:7c13
+2025/01/15 19:34:50 Your IPv6 subnet is 300:2e07:2955:c0c5::/64
+2025/01/15 19:34:50 UNIX admin socket listening on /var/run/yggdrasil.sock
+2025/01/15 19:34:50 TLS listener started on [fe80::da5e:d3ff:fefd:746f%enp9s0]:46317
+2025/01/15 19:34:50 Interface name: tun0
+2025/01/15 19:34:50 Interface IPv6: 200:2e07:2955:c0c5:bbfd:46c5:e414:7c13/7
+2025/01/15 19:34:50 Interface MTU: 65535

@@ -1,30 +1,7 @@
-use core::time;
-use std::{borrow::Cow, io::{stdin, stdout, BufReader, Read, Write}, net::{TcpListener, UdpSocket}, process::{Command, Stdio}, thread::{self, spawn}};
-
 use base64::{prelude::BASE64_STANDARD, Engine};
-use ring::{rand::{SecureRandom, SystemRandom}};
-use aes_gcm::{
-    aead::{Aead, AeadCore, AeadMut, KeyInit, OsRng, Key}, aes::cipher, Aes256Gcm, Nonce // Or `Aes128Gcm`
-};
-use rand::{Rng, RngCore};
-
-#[test]
-pub fn test() {
-    let roomkey = generate_rnd_str(32);
-    let keyref = roomkey.as_bytes();
-    let key = Key::<Aes256Gcm>::from_slice(keyref);
-    
-    
-    // Alternatively, the key can be transformed directly from a byte slice
-    // (panicks on length mismatch):
-    let key = Key::<Aes256Gcm>::from_slice(&key);
-    
-    let cipher = Aes256Gcm::new(&key);
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
-    let ciphertext = cipher.encrypt(&nonce, b"plaintext message".as_ref()).unwrap();
-    let plaintext = cipher.decrypt(&nonce, ciphertext.as_ref()).unwrap();
-    assert_eq!(&plaintext, b"plaintext message");
-}
+use ring::rand::{SecureRandom, SystemRandom};
+use aes_gcm::{aead::{Aead, AeadCore, KeyInit, OsRng, Key}, Aes256Gcm, Nonce};
+use rand::RngCore;
 
 pub fn generate_aesgcm(roomkey: String) -> Aes256Gcm {
     let decoded = BASE64_STANDARD.decode(roomkey).unwrap();
@@ -96,80 +73,3 @@ pub fn decrypt(cipher: &Aes256Gcm, encrypted_data: &[u8]) -> Result<String, Box<
     String::from_utf8(plaintext)
         .map_err(|e| e.into())
 }
-
-
-#[test]
-fn test_ygg_conn() {
-    use std::io::{Read, Write};
-
-    //let mut socket = TcpStream::connect("200:da14:11e:8701:d17f:eb9c:581d:14ae:9595").unwrap();    
-    let mut socket = UdpSocket::bind("[::]:0").unwrap();
-    socket.connect("303:c8b5:db69:fc6d::3131:9595").unwrap();
-
-    let mut buffer = [0; 1024];
-
-    socket.send("hello from client".as_bytes()).unwrap();
-    socket.recv(&mut buffer).unwrap();
-    println!("{}", String::from_utf8_lossy(&buffer));
-}
-
-#[test]
-fn test_yggdrasil() {
-    let x = Command::new("sh")
-        .arg("-c")
-        .arg("echo 'Hel lo!!!'")
-        .output()
-        .expect("failed to execute process");
-
-    println!("{}", String::from_utf8_lossy(&x.stdout));
-
-    let mut ygg = Command::new("sudo")
-        .arg("yggdrasil")
-        .arg("-autoconf")
-        .arg("-logto")
-        .arg("yggdrasil.log")
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("there is a problem with yggdrasil");
-    
-    println!("Yggdrasil started");
-    let mut connectaddr = String::new();
-
-    loop {
-        println!("read yggdrasil.log");
-        thread::sleep(time::Duration::from_millis(500));
-        let mut log = Command::new("sh")
-        .arg("-c")
-        .arg("cat yggdrasil.log")
-        .output()
-        .expect("failed to execute process");
-
-        for line in String::from_utf8_lossy(&log.stdout).lines() {
-            println!("{}", line);
-            if line.contains("Your IPv6 subnet is") {
-                let mut split = line.split("is ");
-                split.next();
-                connectaddr = split.next().unwrap().to_string().replace("::/64", "::1313:9595"); //301:1453:fe64:76b5::/64
-                break;
-            }
-        }
-
-        if !connectaddr.is_empty() {
-            break;
-        }
-    }
-    println!("connectaddr is: {}", connectaddr);
-
-    let mut socket = UdpSocket::bind("[::]:0").unwrap();
-    socket.connect(connectaddr).unwrap();
-
-    let mut buffer = [0; 1024];
-
-    socket.send("hello from client".as_bytes()).unwrap();
-    socket.recv(&mut buffer).unwrap();
-    println!("{}", String::from_utf8_lossy(&buffer));
-
-
-}//.arg("yggdrasil -p 303:c8b5:db69:fc6d::3131:9595")
