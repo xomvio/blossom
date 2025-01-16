@@ -8,6 +8,8 @@ pub fn start() -> Child {
         Err(e) => panic!("failed to generate yggdrasil.conf: {}", e)
     }
 
+    add_peers();
+
     match useconf() {
         Ok(child) => {
             child
@@ -16,6 +18,19 @@ pub fn start() -> Child {
             panic!("failed to start yggdrasil: {}", e);
         }
     }
+}
+
+/// edits yggdrasil.conf file to add peer address (adds only armenian public peer because its close to me lol)
+pub fn add_peers() {
+    let mut file = fs::File::open("yggdrasil.conf").unwrap();
+    
+    let mut content = String::new();
+    file.read_to_string(&mut content).unwrap();
+    content = content.replace("Peers: []", r#"Peers: [
+        tcp://37.186.113.100:1514
+    ]"#);
+
+    fs::write("yggdrasil.conf", content).unwrap();
 }
 
 /// Starts yggdrasil with the configuration file created by `genconf` and
