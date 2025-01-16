@@ -2,7 +2,7 @@
 use std::{net::UdpSocket, process::{Command, Stdio}, thread, time};
 use aes_gcm::{aead::Aead, AeadCore, Aes256Gcm, Key, KeyInit};
 use rand::rngs::OsRng;
-use crate::utils::generate_rnd_str;
+use crate::crypt::generate_rnd_str;
 
 
 #[test]

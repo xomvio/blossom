@@ -11,10 +11,10 @@ pub fn create() -> Result<(String, Child, Sender<()>)> {
     let ygg = yggdrasil::start();
 
     // get yggdrasil ipv6 address
-    let mut connectaddr = yggdrasil::get_ipv6(); 
+    let mut connectaddr = yggdrasil::get_ipv6().unwrap(); 
 
     // add yggdrasil address to loopback
-    yggdrasil::add_addr(connectaddr.clone());
+    yggdrasil::add_addr(connectaddr.clone()).unwrap();
     
     // include port to ipv6
     connectaddr = connectaddr.replace("/64", ":9595");

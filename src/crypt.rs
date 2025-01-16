@@ -17,13 +17,6 @@ pub fn generate_roomkey() -> [u8; 64] {
     buf
 }
 
-/*pub fn generate_rnd_str(length: usize) -> String {
-    //let mut rng = rand::thread_rng();
-    let mut buf = vec![0u8; length];
-    OsRng.fill_bytes(&mut buf);
-    String::from_utf8_lossy(&buf).to_string()
-}*/
-
 pub fn generate_rnd_str(length: usize) -> String {
     let rng = SystemRandom::new();
     let mut bytes = vec![0u8; length];
@@ -45,6 +38,13 @@ pub fn generate_rnd_str(length: usize) -> String {
     random_string
 }
 
+    /// Encrypt a message with the given cipher.
+    ///
+    /// The message is encrypted with the given cipher using a randomly generated nonce.
+    /// The nonce is prepended to the ciphertext, so the returned vector is 12 bytes longer
+    /// than the input message.
+    /// 
+    /// If encryption fails, this function will panic.
 pub fn encrypt(cipher: &Aes256Gcm, message: String) -> Vec<u8> {
     // Generate a random nonce
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
@@ -62,6 +62,14 @@ pub fn encrypt(cipher: &Aes256Gcm, message: String) -> Vec<u8> {
     encrypted
 }
 
+    /// Decrypt a message with the given cipher.
+    ///
+    /// The message is decrypted with the given cipher. The first 12 bytes of the
+    /// `encrypted_data` should be the nonce, and the remaining bytes should be the
+    /// ciphertext.
+    ///
+    /// If decryption fails, this function will cry and panic.
+    ///
 pub fn decrypt(cipher: &Aes256Gcm, encrypted_data: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     // The first 12 bytes should be the nonce
     if encrypted_data.len() < 12 {

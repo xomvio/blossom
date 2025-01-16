@@ -5,8 +5,8 @@ use crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyMo
 use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
 use aes_gcm::Aes256Gcm;
 
-use utils::generate_aesgcm;
-mod utils;
+use crypt::generate_aesgcm;
+mod crypt;
 mod server;
 mod tests;
 mod yggdrasil;
@@ -33,11 +33,11 @@ fn main() -> io::Result<()> {
     let mut terminal = ratatui::init();
 
     if username.is_empty() {
-        username = utils::generate_rnd_str(10);
+        username = crypt::generate_rnd_str(10);
     }
 
     let app_result = if roomkey.is_empty() {
-        BASE64_STANDARD.encode_string(utils::generate_roomkey(), &mut roomkey);
+        BASE64_STANDARD.encode_string(crypt::generate_roomkey(), &mut roomkey);
         App::create_room(username, roomkey).run(&mut terminal)
     }
     else {
@@ -146,7 +146,7 @@ impl App {
                         self.ui.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
                     }
                     else{
-                        let decrypted = utils::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap();
+                        let decrypted = crypt::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap();
                         let (username, message) = decrypted.split_once('|').unwrap();
                         self.ui.history.append(&mut vec![Line::from(vec!["[".cyan(), username.to_owned().cyan(), "] ".cyan(), message.to_owned().gray()])]);
                     }
@@ -169,9 +169,10 @@ impl App {
         self.yggdr.kill().unwrap();
         if let Some(servershutter) = &self.servershutter {
             servershutter.send(()).unwrap();
-            yggdrasil::del_addr(self.connectaddr.clone());
+            yggdrasil::del_addr(self.connectaddr.clone()).unwrap();
+            yggdrasil::del_log();
         }
-        yggdrasil::delconf();
+        yggdrasil::delconf();        
 
 
         Ok(())
@@ -210,7 +211,7 @@ impl App {
             KeyCode::F(1) => self.ui.showusers = !self.ui.showusers,
             KeyCode::F(2) => self.ui.showkey = !self.ui.showkey,
             KeyCode::Enter => {
-                let mut encrypted = utils::encrypt(&self.cipher, self.ui.username.clone() + "|" + &self.ui.input);
+                let mut encrypted = crypt::encrypt(&self.cipher, self.ui.username.clone() + "|" + &self.ui.input);
                 let mut data = self.roombytes.clone();
                 data.append(&mut encrypted);
                 self.socket.send(&data).unwrap();
