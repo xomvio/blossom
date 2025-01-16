@@ -1,17 +1,40 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
 //use ring::rand::{SecureRandom, SystemRandom};
-use aes_gcm::{aead::{Aead, AeadCore, KeyInit, OsRng, Key}, Aes256Gcm, Nonce};
-use rand::RngCore;
+use aes_gcm::{aead::{generic_array::sequence::GenericSequence, Aead, AeadCore, Key, KeyInit, OsRng}, Aes256Gcm, Nonce};
+use rand::{Rng, RngCore};
 use ring::rand::{SecureRandom, SystemRandom};
 
-pub fn generate_aesgcm(roomkey: String) -> Aes256Gcm {
-    let decoded = BASE64_STANDARD.decode(roomkey).unwrap();
-    let key = Key::<Aes256Gcm>::from_slice(&decoded[32..64]);
+pub fn generate_aesgcm(roomkeybtes: [u8; 32]) -> Aes256Gcm {
+    //let keyref = turn_to_32_bytes(roomkey);
+    let key = Key::<Aes256Gcm>::from_slice(&roomkeybtes);
     Aes256Gcm::new(&key)
+    /*let decoded = BASE64_STANDARD.decode(roomkey).unwrap();
+    let key = Key::<Aes256Gcm>::from_slice(&decoded);
+    Aes256Gcm::new(&key)*/
+
+    //let keyref = generate_roomkey();
+    //let key = Key::<Aes256Gcm>::from_slice(&keyref);
+    //Aes256Gcm::new(&key)
 }
 
-pub fn generate_roomkey() -> [u8; 64] {
-    let mut buf = [0u8; 64];
+pub fn turn_to_32_bytes(roomkey: String) -> [u8; 32] {
+    //let mut base: [u8; 32] = OsRng.gen();
+    let mut base = [103u8; 32];
+    if roomkey.bytes().len() > 32 {
+        for i in 0..32 {
+            base[i] = roomkey.as_bytes()[i];
+        }
+    }
+    else {
+        for i in 0..roomkey.len() {
+            base[i] = roomkey.as_bytes()[i];
+        }
+    }
+    base
+}
+
+pub fn generate_roomkey() -> [u8; 32] {
+    let mut buf = [0u8; 32];
     let mut rng = rand::thread_rng();
     rng.fill_bytes(&mut buf);
     buf

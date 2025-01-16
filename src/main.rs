@@ -5,7 +5,7 @@ use crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyMo
 use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
 use aes_gcm::Aes256Gcm;
 
-use crypt::generate_aesgcm;
+use crypt::{generate_aesgcm, turn_to_32_bytes};
 mod crypt;
 mod server;
 mod tests;
@@ -37,8 +37,8 @@ fn main() -> io::Result<()> {
     }
 
     let app_result = if roomkey.is_empty() {
-        BASE64_STANDARD.encode_string(crypt::generate_roomkey(), &mut roomkey);
-        App::create_room(username, roomkey).run(&mut terminal)
+        //BASE64_STANDARD.encode_string(crypt::generate_roomkey(), &mut roomkey);
+        App::create_room(username).run(&mut terminal)
     }
     else {
         App::join_room(username, roomkey, port).run(&mut terminal)
@@ -50,7 +50,7 @@ fn main() -> io::Result<()> {
 
 struct App {
     ui: UI,
-    roombytes: Vec<u8>,
+    //roombytes: Vec<u8>,
     connectaddr: String,
     socket: UdpSocket,
     cipher: Aes256Gcm,
@@ -73,22 +73,23 @@ struct UI {
 
 impl App {
 
-    fn create_room(username: String, roomkey: String) -> Self {
+    fn create_room(username: String) -> Self {
         let (connectaddr, yggdr, servershutter) = server::create().unwrap();
+        let roomkeybytes = turn_to_32_bytes(connectaddr.clone()); // gg(g) in the end
         Self {
             ui: UI {
                 username: username.clone(),
-                roomkey: roomkey.clone(),
+                roomkey: BASE64_STANDARD.encode(roomkeybytes.clone()),
                 roomusers: vec![],
                 history: Vec::new(),
                 input: String::new(),
                 showkey: true,
                 showusers: true
             },
-            roombytes: roomkey.as_bytes()[..32].to_vec(),
-            connectaddr,
+            //roombytes: roomkeybytes.clone().to_vec(),
+            connectaddr: connectaddr.clone(),
             socket: UdpSocket::bind("[::]:9090").unwrap(),
-            cipher: generate_aesgcm(roomkey),
+            cipher: generate_aesgcm(roomkeybytes.clone()),
             exit: false,
             yggdr,
             servershutter: Some(servershutter)
@@ -96,6 +97,11 @@ impl App {
     }
 
     fn join_room(username: String, roomkey: String, port: String) -> Self {
+        let ygg = yggdrasil::start();
+        let decodedroomkey = BASE64_STANDARD.decode(roomkey.clone()).unwrap();
+        let connectaddr = String::from_utf8(decodedroomkey.clone()).unwrap().replace("g", "");
+        let roomkeybtes = turn_to_32_bytes(connectaddr.clone());
+
         Self {
             ui: UI {
                 username: username.clone(),
@@ -106,12 +112,12 @@ impl App {
                 showkey: true,
                 showusers: true
             },
-            roombytes: roomkey.as_bytes()[..32].to_vec(),
-            connectaddr: String::new(),
+            //roombytes: roomkey.as_bytes()[..32].to_vec(),
+            connectaddr,
             socket: UdpSocket::bind(format!("[::]:{}", port)).unwrap(),
-            cipher: generate_aesgcm(roomkey),
+            cipher: generate_aesgcm(roomkeybtes.clone()),
             exit: false,
-            yggdr: todo!(),
+            yggdr: ygg,
             servershutter: None
         }
     }
@@ -133,9 +139,9 @@ impl App {
 
         thread::sleep(time::Duration::from_millis(3000));
 
-        let mut data = self.roombytes.clone();
-        data.append(&mut self.ui.username.as_bytes().to_vec());
-        self.socket.send(&data).unwrap();
+        //let mut data = self.roombytes.clone();
+        //data.append(&mut self.ui.username.as_bytes().to_vec());
+        self.socket.send(&self.ui.username.as_bytes().to_vec()).unwrap();
 
         while !self.exit {            
             match self.socket.recv_from(buffer.as_mut()) {
@@ -212,9 +218,9 @@ impl App {
             KeyCode::F(2) => self.ui.showkey = !self.ui.showkey,
             KeyCode::Enter => {
                 let mut encrypted = crypt::encrypt(&self.cipher, self.ui.username.clone() + "|" + &self.ui.input);
-                let mut data = self.roombytes.clone();
-                data.append(&mut encrypted);
-                self.socket.send(&data).unwrap();
+                //let mut data = self.roombytes.clone();
+                //data.append(&mut encrypted);
+                self.socket.send(&encrypted).unwrap();
                 self.ui.input.clear();
             },
             KeyCode::Backspace => {
