@@ -121,64 +121,71 @@ impl App {
 
 
     fn run(&mut self, terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
-        //let connectaddr = server::create().unwrap();
+        // Attempt to establish a connection to the specified address
         match self.socket.connect(self.connectaddr.clone()) {
             Ok(_) => {}
             Err(e) => {
                 return Err(e);
             }
         }
-        //self.socket.connect("303:c8b5:db69:fc6d::3131:9595").unwrap();
+        
         self.socket.set_nonblocking(true).unwrap();
 
-        
-        let mut buffer = [0; 1024];
+        let mut buffer = [0; 1024]; // Storing incoming data here. this limit may be higher
 
+        // This had to be changed
         thread::sleep(time::Duration::from_millis(3000));
 
-        //let mut data = self.roombytes.clone();
-        //data.append(&mut self.ui.username.as_bytes().to_vec());
+        // Send the username as the initial message to the server
         self.socket.send(self.ui.username.as_bytes()).unwrap();
 
-        while !self.exit {            
+        // Main loop that runs until the exit flag is set
+        while !self.exit {
+            // Attempt to receive data from the socket
             match self.socket.recv_from(buffer.as_mut()) {
                 Ok((size, _)) => {
+                    // Check if the received data is smaller than 12 bytes, indicating a username
                     if size < 12 {
                         let username = String::from_utf8(buffer[..size].to_vec()).unwrap();
+                        // Add the new user to the room users list and history
                         self.ui.roomusers.push(Line::from(username.clone()).red());
                         self.ui.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
-                    }
-                    else{
+                    } else {
+                        // Decrypt the received message
                         let decrypted = crypt::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap();
+                        // Split the decrypted message into username and message parts
                         let (username, message) = decrypted.split_once('|').unwrap();
+                        // Add the message to the chat history
                         self.ui.history.append(&mut vec![Line::from(vec!["[".cyan(), username.to_owned().cyan(), "] ".cyan(), message.to_owned().gray()])]);
                     }
                 }
+                // Handle the case where the socket would block, indicating no data is available
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // no incoming data, can do other things
+                    // Can perform other tasks here if needed
                 }
+                // Handle any other errors that occur during reception
                 Err(e) => {
-                    println!("Error: ha!{}", e);
-                    break;
+                    println!("Error: ha!{}", e); // Log the error
+                    break; // Exit the loop on error
                 }
             }
 
+            // Draw the current state of the terminal UI
             terminal.draw(|f| self.draw(f))?;
+            // Handle any user input events
             self.handle_events().unwrap();
         }
         
-
-        // graceful shutdown
-        self.yggdr.kill().unwrap();
+        // Perform a graceful shutdown of the application
+        self.yggdr.kill().unwrap(); // Terminate the yggdrasil process
         if let Some(servershutter) = &self.servershutter {
-            servershutter.send(()).unwrap();
-            yggdrasil::del_addr(self.connectaddr.clone()).unwrap();
+            servershutter.send(()).unwrap(); // Send a shutdown signal to the server
+            yggdrasil::del_addr(self.connectaddr.clone()).unwrap(); // Delete the yggdrasil address
         }
-        yggdrasil::delconf();
-        yggdrasil::del_log();
+        yggdrasil::delconf(); // Delete the configuration file
+        yggdrasil::del_log(); // Delete the log file
 
-
-        Ok(())
+        Ok(()) // Return success
     }
 
     fn draw(&self, frame: &mut Frame) {

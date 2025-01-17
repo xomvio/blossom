@@ -2,16 +2,40 @@ use core::panic;
 use std::{fs, io::{Error, Read}, process::{Child, Command, Stdio}, thread, time::{Duration, Instant}};
 
 pub fn start() -> Result<Child, Error> {
+    check()?;
 
-    genconf()?;
+    generate_conf()?;
 
     add_peers()?;
 
-    useconf()
+    run()
+}
+
+fn check() -> Result<(), Error> {    
+    // check if yggdrasil is already running
+    if Command::new("pgrep").arg("yggdrasil").output().is_ok() {
+
+        // kill yggdrasil
+        match Command::new("sh")
+        .arg("-c")
+        .arg("sudo killall yggdrasil")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .output() {
+            Ok(_) => {},
+            Err(e) => return Err(e)
+        }
+
+        // or return an error to user and they can stop maybe?
+        //return Err(Error::new(ErrorKind::AlreadyExists, "yggdrasil is already running"));
+    }
+
+    Ok(())
 }
 
     /// edits yggdrasil.conf file to add peer address (adds only armenian public peer because its close to me lol)
-pub fn add_peers() -> Result<(), Error> {
+fn add_peers() -> Result<(), Error> {
     let mut file = fs::File::open("yggdrasil.conf")?;
     
     let mut content = String::new();
@@ -28,7 +52,7 @@ pub fn add_peers() -> Result<(), Error> {
 
     /// Starts yggdrasil with the configuration file created by `genconf` and
     /// logs output to yggdrasil.log.
-fn useconf() -> Result<Child, Error> {
+fn run() -> Result<Child, Error> {
     Command::new("sh")
     .arg("-c")
     .arg("sudo yggdrasil -useconffile yggdrasil.conf -logto yggdrasil.log")
@@ -44,7 +68,7 @@ fn useconf() -> Result<Child, Error> {
     ///
     /// This function runs the command `sudo yggdrasil -genconf > yggdrasil.conf`, and
     /// returns an error if the command fails.
-fn genconf() -> Result<(), Error> {
+fn generate_conf() -> Result<(), Error> {
     match Command::new("sh")
         .arg("-c")
         .arg("sudo yggdrasil -genconf > yggdrasil.conf")

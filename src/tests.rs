@@ -1,86 +1,62 @@
-#![allow(unused_imports)]
-use std::{net::UdpSocket, process::{Command, Stdio}, thread, time};
-use aes_gcm::{aead::Aead, AeadCore, Aes256Gcm, Key, KeyInit};
-use rand::rngs::OsRng;
-use crate::crypt::generate_rnd_str;
+#[cfg(test)]
+mod encryption {
+    use crate::crypt::{decrypt, encrypt};
+    use aes_gcm::{Key, KeyInit, Aes256Gcm};
 
-
-#[test]
-pub fn test() {
-    let roomkey = generate_rnd_str(32);
-    let keyref = roomkey.as_bytes();
-    let key = Key::<Aes256Gcm>::from_slice(keyref);
-    
-    
-    // Alternatively, the key can be transformed directly from a byte slice
-    // (panicks on length mismatch):
-    let key = Key::<Aes256Gcm>::from_slice(&key);
-    
-    let cipher = Aes256Gcm::new(&key);
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng); // 96-bits; unique per message
-    let ciphertext = cipher.encrypt(&nonce, b"plaintext message".as_ref()).unwrap();
-    let plaintext = cipher.decrypt(&nonce, ciphertext.as_ref()).unwrap();
-    assert_eq!(&plaintext, b"plaintext message");
-}
-
-
-#[test]
-fn test_yggdrasil() {
-    let x = Command::new("sh")
-        .arg("-c")
-        .arg("echo 'Hel lo!!!'")
-        .output()
-        .expect("failed to execute process");
-
-    println!("{}", String::from_utf8_lossy(&x.stdout));
-
-    Command::new("sudo")
-        .arg("yggdrasil")
-        .arg("-autoconf")
-        .arg("-logto")
-        .arg("yggdrasil.log")
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("there is a problem with yggdrasil");
-    
-    println!("Yggdrasil started");
-    let mut connectaddr = String::new();
-
-    loop {
-        println!("read yggdrasil.log");
-        thread::sleep(time::Duration::from_millis(500));
-        let log = Command::new("sh")
-        .arg("-c")
-        .arg("cat yggdrasil.log")
-        .output()
-        .expect("failed to execute process");
-
-        for line in String::from_utf8_lossy(&log.stdout).lines() {
-            println!("{}", line);
-            if line.contains("Your IPv6 subnet is") {
-                let mut split = line.split("is ");
-                split.next();
-                connectaddr = split.next().unwrap().to_string().replace("::/64", "::1313:9595"); //301:1453:fe64:76b5::/64
-                break;
-            }
-        }
-
-        if !connectaddr.is_empty() {
-            break;
-        }
+    #[test]
+    fn encrypt_valid_cipher_and_message() {
+        let key = Key::<Aes256Gcm>::from_slice(&[0u8; 32]);
+        let cipher = Aes256Gcm::new(key);
+        let message = "Hello, World!".to_string();
+        let encrypted = encrypt(&cipher, message.clone());
+        assert!(encrypted.len() == message.len() + 28);
     }
-    println!("connectaddr is: {}", connectaddr);
 
-    let /*mut*/ socket = UdpSocket::bind("[::]:0").unwrap();
-    socket.connect(connectaddr).unwrap();
+    #[test]
+    fn encrypt_empty_message() {
+        let key = Key::<Aes256Gcm>::from_slice(&[0u8; 32]);
+        let cipher = Aes256Gcm::new(key);
+        let message = "".to_string();
+        let encrypted = encrypt(&cipher, message);
+        assert!(encrypted.len() == 28);
+    }
+    
+    #[test]
+    #[should_panic]
+    fn encrypt_malformed_cipher() {
+        let key = Key::<Aes256Gcm>::from_slice(&[0u8; 31]); // invalid key size
+        let cipher = Aes256Gcm::new(key);
+        let message = "Hello, World!".to_string();
+        encrypt(&cipher, message);
+    }
 
-    let mut buffer = [0; 1024];
 
-    socket.send("hello from client".as_bytes()).unwrap();
-    socket.recv(&mut buffer).unwrap();
-    println!("{}", String::from_utf8_lossy(&buffer));
+    #[test]
+    fn decrypt_valid_cipher_and_data() {
+        let key = Key::<Aes256Gcm>::from_slice(&[0u8; 32]);
+        let cipher = Aes256Gcm::new(key);
+        let message = "Hello, World!".to_string();
+        let encrypted = encrypt(&cipher, message.clone());
+        let decrypted = decrypt(&cipher, &encrypted).unwrap();
+        assert_eq!(decrypted, message);
+    }
 
+    /// This is fails and had to be fixed
+    /// decrypt function has problems
+    #[test]
+    fn decrypt_invalid_cipher() {
+        let key = Key::<Aes256Gcm>::from_slice(&[0u8; 31]); // invalid key size
+        let cipher = Aes256Gcm::new(key);
+        let message = "Hello, World!".to_string();
+        let encrypted = encrypt(&cipher, message.clone());
+        assert!(decrypt(&cipher, &encrypted).is_err());
+    }
 
+    #[test]
+    fn decrypt_too_short_data() {
+        let key = Key::<Aes256Gcm>::from_slice(&[0u8; 32]);
+        let cipher = Aes256Gcm::new(key);
+        let encrypted: [u8; 10] = [0u8; 10];
+        assert_eq!(decrypt(&cipher, &encrypted).unwrap_err().to_string(), "Encrypted data too short");
+    }
 }
