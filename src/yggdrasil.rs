@@ -1,5 +1,5 @@
 use core::panic;
-use std::{f32::consts::E, fs, io::{Error, Read}, process::{Child, Command, Stdio}, time::{Duration, Instant}};
+use std::{fs, io::{Error, Read}, process::{Child, Command, Stdio}, thread, time::{Duration, Instant}};
 
 pub fn start() -> Child {
 
@@ -79,6 +79,26 @@ pub fn delconf() {
         }
 }
 
+pub fn wait_for_start() {
+    let start = Instant::now();
+    let timeout = Duration::from_secs(5);
+    loop {
+        thread::sleep(Duration::from_millis(200));
+        if start.elapsed() > timeout {
+            panic!("timed out waiting for yggdrasil to start");
+        }
+        let mut file = match fs::File::open("yggdrasil.log") {
+            Ok(file) => file,
+            Err(_) => continue  // this file is not created yet. try again
+        };
+        let mut buf = String::new();
+        file.read_to_string(&mut buf).unwrap();
+        if buf.contains("Interface MTU") {
+            return;
+        }
+    }
+}
+
     /// Waits for yggdrasil to start and returns its IPv6 address. This
     /// function will block until yggdrasil is running and ready to go.
     /// If yggdrasil doesn't start within 5 seconds, the function will
@@ -91,46 +111,34 @@ pub fn delconf() {
     /// 
     /// Returns the IPv6 address of yggdrasil for creating a server.
 pub fn get_ipv6() -> Result<String, Error> {
-    let start = Instant::now();
-    let timeout = Duration::from_secs(5);
-    let mut connectaddr = String::new();
-    loop {
-        // We loop until we see the line that says "Interface MTU" in
-        // the log file. This is the last line that yggdrasil logs when
-        // it's just started, and it means that yggdrasil is running and
-        // ready to go.
-        match std::fs::File::open("yggdrasil.log") {
-            Ok(mut file) => {
-                let mut buf = String::new();
-                file.read_to_string(&mut buf).unwrap();
-                for line in buf.lines() {
-                    if line.contains("Your IPv6 subnet is") {
-                        // If the line starts with "Your IPv6 subnet is",
-                        // then the second part of the line is the IPv6
-                        // subnet that we're interested in.
-                        if let Some(addr) = line.split("is ").nth(1) {
-                            connectaddr = addr
-                                .to_string()
-                                .replace("::/64", "::1313/64");
-                        }
-                    }
-                    else if line.contains("Interface MTU") {
-                        // If the line contains "Interface MTU", then
-                        // we've seen the last line of the log file, and
-                        // we can exit the loop.
-                        return Ok(connectaddr);
+
+    // Wait for yggdrasil to start    
+    wait_for_start();
+
+    match std::fs::File::open("yggdrasil.log") {
+        Ok(mut file) => {
+
+            let mut buf = String::new();
+            file.read_to_string(&mut buf).unwrap();
+
+            for line in buf.lines() {
+                if line.contains("Your IPv6 subnet is") {
+                    // If the line starts with "Your IPv6 subnet is",
+                    // then the second part of the line is the IPv6
+                    // subnet that we're interested in.
+                    if let Some(addr) = line.split("is ").nth(1) {
+                        return Ok(addr
+                            .to_string()
+                            .replace("::/64", "::1313/64"));
                     }
                 }
             }
-            // If the file doesn't exist yet, then we just try again.
-            Err(e) => {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    continue;
-                }
-            }
+
+            return Err(Error::new(std::io::ErrorKind::NotFound, "yggdrasil.log looks strange..."));
         }
-        if start.elapsed() > timeout {
-            return Err(Error::new(std::io::ErrorKind::TimedOut, "timed out waiting for yggdrasil.log"));
+        Err(_) => {
+            // this error is unexpected. Because we just checked if the file exists in wait_for_start function
+            return Err(Error::new(std::io::ErrorKind::NotFound, "yggdrasil.log not found or not readable"));
         }
     }
 }

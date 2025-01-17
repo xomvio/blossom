@@ -86,7 +86,6 @@ impl App {
                 showkey: true,
                 showusers: true
             },
-            //roombytes: roomkeybytes.clone().to_vec(),
             connectaddr: connectaddr.clone(),
             socket: UdpSocket::bind("[::]:9090").unwrap(),
             cipher: generate_aesgcm(roomkeybytes.clone()),
@@ -97,7 +96,7 @@ impl App {
     }
 
     fn join_room(username: String, roomkey: String, port: String) -> Self {
-        let ygg = yggdrasil::start();
+        let yggdr = yggdrasil::start();
         let _ = yggdrasil::get_ipv6();
         let decodedroomkey = BASE64_STANDARD.decode(roomkey.clone()).unwrap();
         let connectaddr = String::from_utf8(decodedroomkey.clone()).unwrap().replace("g", "");
@@ -113,12 +112,11 @@ impl App {
                 showkey: true,
                 showusers: true
             },
-            //roombytes: roomkey.as_bytes()[..32].to_vec(),
             connectaddr,
             socket: UdpSocket::bind(format!("[::]:{}", port)).unwrap(),
             cipher: generate_aesgcm(roomkeybtes.clone()),
             exit: false,
-            yggdr: ygg,
+            yggdr,
             servershutter: None
         }
     }
@@ -177,9 +175,9 @@ impl App {
         if let Some(servershutter) = &self.servershutter {
             servershutter.send(()).unwrap();
             yggdrasil::del_addr(self.connectaddr.clone()).unwrap();
-            yggdrasil::del_log();
         }
-        yggdrasil::delconf();        
+        yggdrasil::delconf();
+        yggdrasil::del_log();
 
 
         Ok(())
@@ -200,7 +198,7 @@ impl App {
                 _=> {}
             }
         } else {
-            // Timeout expired, no `Event` is available
+            // Timeout expired, no `Event` is captured
         }
         Ok(())
     }
@@ -218,9 +216,7 @@ impl App {
             KeyCode::F(1) => self.ui.showusers = !self.ui.showusers,
             KeyCode::F(2) => self.ui.showkey = !self.ui.showkey,
             KeyCode::Enter => {
-                let mut encrypted = crypt::encrypt(&self.cipher, self.ui.username.clone() + "|" + &self.ui.input);
-                //let mut data = self.roombytes.clone();
-                //data.append(&mut encrypted);
+                let encrypted = crypt::encrypt(&self.cipher, self.ui.username.clone() + "|" + &self.ui.input);
                 self.socket.send(&encrypted).unwrap();
                 self.ui.input.clear();
             },

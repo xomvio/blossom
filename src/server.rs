@@ -1,5 +1,5 @@
 use core::time;
-use std::{collections::HashMap, io::Result, net::{SocketAddr, UdpSocket}, process::Child, sync::mpsc::{Receiver, Sender}, thread};
+use std::{io::Result, net::{SocketAddr, UdpSocket}, process::Child, sync::mpsc::{Receiver, Sender}, thread};
 use std::sync::mpsc;
 
 use crate::yggdrasil;
@@ -30,12 +30,6 @@ pub fn create() -> Result<(String, Child, Sender<()>)> {
 
     Ok((connectaddr, ygg, servertx))
 }
-
-pub fn join(addr: String) {
-    //let ygg = yggdrasil::start();
-    todo!()
-}
-
 
 struct User {
     pub name: String,
