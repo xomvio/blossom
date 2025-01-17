@@ -98,6 +98,7 @@ impl App {
 
     fn join_room(username: String, roomkey: String, port: String) -> Self {
         let ygg = yggdrasil::start();
+        let _ = yggdrasil::get_ipv6();
         let decodedroomkey = BASE64_STANDARD.decode(roomkey.clone()).unwrap();
         let connectaddr = String::from_utf8(decodedroomkey.clone()).unwrap().replace("g", "");
         let roomkeybtes = turn_to_32_bytes(connectaddr.clone());

@@ -26,8 +26,9 @@ pub fn add_peers() {
     
     let mut content = String::new();
     file.read_to_string(&mut content).unwrap();
+    //its not had to be quic, tcp is also ok
     content = content.replace("Peers: []", r#"Peers: [
-        tcp://37.186.113.100:1514
+        quic://37.186.113.100:1515
     ]"#);
 
     fs::write("yggdrasil.conf", content).unwrap();
