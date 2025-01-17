@@ -1,8 +1,8 @@
 use core::time;
 use std::{io::{self, Error}, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
 use base64::{prelude::BASE64_STANDARD, Engine};
-use crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
+//use crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::{buffer::Buffer, crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
 use aes_gcm::Aes256Gcm;
 
 use crypt::{generate_aesgcm, turn_to_32_bytes};

@@ -207,7 +207,6 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "base64",
- "crossterm",
  "rand",
  "ratatui",
 ]
