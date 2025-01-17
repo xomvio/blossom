@@ -1,29 +1,25 @@
 use aes_gcm::{aead::{Aead, AeadCore, Key, KeyInit, OsRng}, Aes256Gcm, Nonce};
 use rand::RngCore;
 
-pub fn generate_aesgcm(roomkeybtes: [u8; 32]) -> Aes256Gcm {
-    let key = Key::<Aes256Gcm>::from_slice(&roomkeybtes);
-    Aes256Gcm::new(&key)
+pub fn generate_aesgcm(roomkeybytes: [u8; 32]) -> Aes256Gcm {
+    let key = Key::<Aes256Gcm>::from_slice(&roomkeybytes);
+    Aes256Gcm::new(key)
 }
 
 pub fn turn_to_32_bytes(roomkey: String) -> [u8; 32] {
-    //let mut base: [u8; 32] = OsRng.gen();
+    let roomkeybytes = roomkey.as_bytes();
     let mut base = [103u8; 32];
-    if roomkey.bytes().len() > 32 {
-        for i in 0..32 {
-            base[i] = roomkey.as_bytes()[i];
-        }
+    if roomkeybytes.len() > 32 {
+        base.copy_from_slice(&roomkeybytes[0..32]);
     }
     else {
-        for i in 0..roomkey.len() {
-            base[i] = roomkey.as_bytes()[i];
-        }
+        base[0..roomkeybytes.len()].copy_from_slice(roomkeybytes);
     }
     base
 }
 
 pub fn generate_rnd_str(length: usize) -> String {
-    let mut rng = OsRng::default();
+    let mut rng = OsRng;
     let mut bytes = vec![0u8; length];
     rng.fill_bytes(&mut bytes);
 
@@ -31,7 +27,7 @@ pub fn generate_rnd_str(length: usize) -> String {
     let random_string: String = bytes
         .into_iter()
         .map(|b| {
-            let index = (b % 62) as u8; // 0-61 arası bir sayı üret
+            let index = b % 62; // generate random number between 0-61
             match index {
                 0..=9 => (b'0' + index) as char,       // '0' - '9'
                 10..=35 => (b'A' + index - 10) as char, // 'A' - 'Z'

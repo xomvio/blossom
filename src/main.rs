@@ -1,5 +1,5 @@
 use core::time;
-use std::{io, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
+use std::{io::{self, Error}, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{buffer::Buffer, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
@@ -17,16 +17,14 @@ fn main() -> io::Result<()> {
     let mut roomkey = String::new();
     let mut port = "9191".to_string();
     for i in 1..std::env::args().len() {
-        match std::env::args().nth(i) {
-            Some(arg) => {
-                match arg.as_str() {
-                    "--username" | "-u" => username = std::env::args().nth(i + 1).unwrap(),
-                    "--roomkey" | "-r" => roomkey = std::env::args().nth(i + 1).unwrap(),
-                    "--port" | "-p" => port = std::env::args().nth(i + 1).unwrap(),
-                    _ => {}
-                }
+        if let Some(arg) = std::env::args().nth(i) {
+            match arg.as_str() {
+                "--username" | "-u" => username = std::env::args().nth(i + 1).unwrap(),
+                "--roomkey" | "-r" => roomkey = std::env::args().nth(i + 1).unwrap(),
+                "--port" | "-p" => port = std::env::args().nth(i + 1).unwrap(),
+                //also add help here
+                _ => {}                
             }
-            None => {}
         }
     }
     
@@ -41,7 +39,7 @@ fn main() -> io::Result<()> {
         App::create_room(username).run(&mut terminal)
     }
     else {
-        App::join_room(username, roomkey, port).run(&mut terminal)
+        App::join_room(username, roomkey, port)?.run(&mut terminal)
     };
     
     ratatui::restore();
@@ -79,7 +77,7 @@ impl App {
         Self {
             ui: UI {
                 username: username.clone(),
-                roomkey: BASE64_STANDARD.encode(roomkeybytes.clone()),
+                roomkey: BASE64_STANDARD.encode(roomkeybytes),
                 roomusers: vec![],
                 history: Vec::new(),
                 input: String::new(),
@@ -88,21 +86,21 @@ impl App {
             },
             connectaddr: connectaddr.clone(),
             socket: UdpSocket::bind("[::]:9090").unwrap(),
-            cipher: generate_aesgcm(roomkeybytes.clone()),
+            cipher: generate_aesgcm(roomkeybytes),
             exit: false,
             yggdr,
             servershutter: Some(servershutter)
         }
     }
 
-    fn join_room(username: String, roomkey: String, port: String) -> Self {
-        let yggdr = yggdrasil::start();
+    fn join_room(username: String, roomkey: String, port: String) -> Result<Self, Error> {
+        let yggdr = yggdrasil::start()?;
         let _ = yggdrasil::get_ipv6();
         let decodedroomkey = BASE64_STANDARD.decode(roomkey.clone()).unwrap();
         let connectaddr = String::from_utf8(decodedroomkey.clone()).unwrap().replace("g", "");
         let roomkeybtes = turn_to_32_bytes(connectaddr.clone());
 
-        Self {
+        Ok(Self {
             ui: UI {
                 username: username.clone(),
                 roomkey: roomkey.clone(),
@@ -114,11 +112,11 @@ impl App {
             },
             connectaddr,
             socket: UdpSocket::bind(format!("[::]:{}", port)).unwrap(),
-            cipher: generate_aesgcm(roomkeybtes.clone()),
+            cipher: generate_aesgcm(roomkeybtes),
             exit: false,
             yggdr,
             servershutter: None
-        }
+        })
     }
 
 
@@ -140,7 +138,7 @@ impl App {
 
         //let mut data = self.roombytes.clone();
         //data.append(&mut self.ui.username.as_bytes().to_vec());
-        self.socket.send(&self.ui.username.as_bytes().to_vec()).unwrap();
+        self.socket.send(self.ui.username.as_bytes()).unwrap();
 
         while !self.exit {            
             match self.socket.recv_from(buffer.as_mut()) {
@@ -205,10 +203,14 @@ impl App {
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         if key_event.modifiers.contains(KeyModifiers::CONTROL) {
-            match key_event.code {
+            if let KeyCode::Char('c') = key_event.code {
+                self.exit();
+            }
+            // this will be used if we want to handle more keybinds
+            /*match key_event.code {
                 KeyCode::Char('c') => self.exit(),
                 _ => {}
-            }
+            }*/
             return
         }
         
@@ -243,7 +245,6 @@ impl Widget for &App {
         let mut heightleft = area.height;
         
         if self.ui.showkey {
-            //widthleft -= 6;
             heightleft -= 3;
             Paragraph::new(Line::from(self.ui.roomkey.clone()))
                 .block(block.to_owned().title(" Room Key "))
@@ -265,7 +266,7 @@ impl Widget for &App {
 
         let mut history = Vec::new();
         for message in &self.ui.history {
-            history.push(Line::from(message.to_owned()));
+            history.push(message.to_owned());
         }
         if history.len() > (heightleft - 6) as usize {
             history.drain(0..(history.len() - (heightleft - 6) as usize));

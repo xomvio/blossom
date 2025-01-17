@@ -6,16 +6,15 @@ use crate::yggdrasil;
 
 pub fn create() -> Result<(String, Child, Sender<()>)> {
 
-    // start yggdrasil and wait for exit signal via yggtx
-    //let yggtx = yggdrasil::start(); 
-    let ygg = yggdrasil::start();
+    // start yggdrasil process and use it for exit later
+    let ygg = yggdrasil::start()?;
 
     // get yggdrasil ipv6 address
-    let mut connectaddr = yggdrasil::get_ipv6().unwrap(); 
+    let mut connectaddr = yggdrasil::get_ipv6()?;
 
     // add yggdrasil address to loopback
-    yggdrasil::add_addr(connectaddr.clone()).unwrap();
-    
+    yggdrasil::add_addr(connectaddr.clone())?;
+
     // include port to ipv6
     connectaddr = connectaddr.replace("/64", ":9595");
     
@@ -27,7 +26,7 @@ pub fn create() -> Result<(String, Child, Sender<()>)> {
     
     // initialize graceful thread killer
     //let killer = Killer { yggtx: Some(yggtx), servertx: Some(servertx), ipaddrtx: Some(ipaddrtx) };
-
+    
     Ok((connectaddr, ygg, servertx))
 }
 
@@ -55,7 +54,7 @@ fn run(connect_addr: String, serverrx: Receiver<()>) {
                 }
                 //// let room: String = String::from_utf8_lossy(&buffer[..32]).to_string(); ////
                 // check if the user is already in the room
-                if users.iter().find(|user| user.addr == addr).is_none() {// user is not in the room yet
+                if !users.iter().any(|user| user.addr == addr) {// user is not in the room yet
                     // add him to the room
                     users.push(User { name: String::from_utf8_lossy(&buffer[..size]).to_string(), addr });
                     // send all usernames in the room to the new user

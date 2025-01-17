@@ -1,41 +1,33 @@
 use core::panic;
 use std::{fs, io::{Error, Read}, process::{Child, Command, Stdio}, thread, time::{Duration, Instant}};
 
-pub fn start() -> Child {
+pub fn start() -> Result<Child, Error> {
 
-    match genconf() {
-        Ok(_) => {},
-        Err(e) => panic!("failed to generate yggdrasil.conf: {}", e)
-    }
+    genconf()?;
 
-    add_peers();
+    add_peers()?;
 
-    match useconf() {
-        Ok(child) => {
-            child
-        },
-        Err(e) => {
-            panic!("failed to start yggdrasil: {}", e);
-        }
-    }
+    useconf()
 }
 
-/// edits yggdrasil.conf file to add peer address (adds only armenian public peer because its close to me lol)
-pub fn add_peers() {
-    let mut file = fs::File::open("yggdrasil.conf").unwrap();
+    /// edits yggdrasil.conf file to add peer address (adds only armenian public peer because its close to me lol)
+pub fn add_peers() -> Result<(), Error> {
+    let mut file = fs::File::open("yggdrasil.conf")?;
     
     let mut content = String::new();
-    file.read_to_string(&mut content).unwrap();
+    file.read_to_string(&mut content)?;
     //its not had to be quic, tcp is also ok
     content = content.replace("Peers: []", r#"Peers: [
         quic://37.186.113.100:1515
     ]"#);
 
-    fs::write("yggdrasil.conf", content).unwrap();
+    fs::write("yggdrasil.conf", content)?;
+
+    Ok(())
 }
 
-/// Starts yggdrasil with the configuration file created by `genconf` and
-/// logs output to yggdrasil.log.
+    /// Starts yggdrasil with the configuration file created by `genconf` and
+    /// logs output to yggdrasil.log.
 fn useconf() -> Result<Child, Error> {
     Command::new("sh")
     .arg("-c")
@@ -134,11 +126,11 @@ pub fn get_ipv6() -> Result<String, Error> {
                 }
             }
 
-            return Err(Error::new(std::io::ErrorKind::NotFound, "yggdrasil.log looks strange..."));
+            Err(Error::new(std::io::ErrorKind::NotFound, "yggdrasil.log looks strange..."))
         }
         Err(_) => {
             // this error is unexpected. Because we just checked if the file exists in wait_for_start function
-            return Err(Error::new(std::io::ErrorKind::NotFound, "yggdrasil.log not found or not readable"));
+            Err(Error::new(std::io::ErrorKind::NotFound, "yggdrasil.log not found or not readable"))
         }
     }
 }
@@ -159,7 +151,7 @@ pub fn add_addr(addr: String) -> Result<(), Error> {
         .stdout(Stdio::null())
         .output() {
             Ok(_) => Ok(()),
-            Err(e) => return Err(e)
+            Err(e) => Err(e)
         }
 }
 
@@ -174,8 +166,8 @@ pub fn del_addr(addr: String) -> Result<(), Error> {
         .stderr(Stdio::null())
         .stdout(Stdio::null())
         .output() {
-            Ok(_) => return Ok(()),
-            Err(e) => return Err(e)
+            Ok(_) => Ok(()),
+            Err(e) => Err(e)
         }
 }
 
