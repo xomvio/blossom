@@ -24,9 +24,6 @@ pub fn create() -> Result<(String, Child, Sender<()>)> {
     // start server
     thread::spawn(move || { run(connectaddr_clone, serverrx); });
     
-    // initialize graceful thread killer
-    //let killer = Killer { yggtx: Some(yggtx), servertx: Some(servertx), ipaddrtx: Some(ipaddrtx) };
-    
     Ok((connectaddr, ygg, servertx))
 }
 

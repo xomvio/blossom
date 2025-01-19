@@ -53,7 +53,7 @@ pub fn encrypt(cipher: &Aes256Gcm, message: String) -> Vec<u8> {
     // Encrypt the message
     let ciphertext = cipher
         .encrypt(&nonce, message.as_bytes())
-        .expect("encryption failure");
+        .unwrap_or("Failed to encrypt this message".into());
     
     // Combine nonce and ciphertext into a single vector
     let mut encrypted = Vec::new();
@@ -84,7 +84,8 @@ pub fn decrypt(cipher: &Aes256Gcm, encrypted_data: &[u8]) -> Result<String, Box<
     // Decrypt the message
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|e| format!("Decryption error: {}", e))?;
+        .unwrap_or("Failed to decrypt this message".into());
+        //.map_err(|e| format!("Decryption error: {}", e))?;
     
     // Convert the decrypted bytes to a string
     String::from_utf8(plaintext)

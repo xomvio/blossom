@@ -82,7 +82,7 @@ fn generate_conf() -> Result<(), Error> {
     Ok(())
 }
 
-pub fn delconf() {
+pub fn delconf() -> Result<(), Error> {
     match Command::new("sh")
         .arg("-c")
         .arg("sudo rm yggdrasil.conf")
@@ -91,8 +91,9 @@ pub fn delconf() {
         .stdout(Stdio::null())
         .output(){
             Ok(_) => {},
-            Err(e) => panic!("failed to delete yggdrasil.conf: {}", e)
+            Err(e) => return Err(e)
         }
+    Ok(())
 }
 
 pub fn wait_for_start() {
@@ -150,7 +151,7 @@ pub fn get_ipv6() -> Result<String, Error> {
                 }
             }
 
-            Err(Error::new(std::io::ErrorKind::NotFound, "yggdrasil.log looks strange..."))
+            Err(Error::new(std::io::ErrorKind::NotFound, "yggdrasil.log looks strange... delete it and try again"))
         }
         Err(_) => {
             // this error is unexpected. Because we just checked if the file exists in wait_for_start function
@@ -198,7 +199,7 @@ pub fn del_addr(addr: String) -> Result<(), Error> {
     /// Deletes the yggdrasil.log file. Usage of function is important 
     /// because keeping the log file will cause us to read older logs
     /// thus we will get the old ipv6 address when we create a server.
-pub fn del_log() {
+pub fn del_log() -> Result<(), Error> {
     match Command::new("sh")
         .arg("-c")
         .arg("sudo rm yggdrasil.log")
@@ -207,6 +208,7 @@ pub fn del_log() {
         .stdout(Stdio::null())
         .output(){
             Ok(_) => {},
-            Err(e) => panic!("failed to delete yggdrasil.log: {}", e)
+            Err(e) => return Err(e)
         }
+    Ok(())
 }
