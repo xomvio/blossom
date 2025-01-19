@@ -11,7 +11,7 @@ pub fn start() -> Result<Child, Error> {
     run()
 }
 
-fn check() -> Result<(), Error> {    
+fn check() -> Result<(), Error> {
     // check if yggdrasil is already running
     if Command::new("pgrep").arg("yggdrasil").output().is_ok() {
 
