@@ -1,5 +1,5 @@
 use core::time;
-use std::{io::{self, Error}, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
+use std::{io::{self, Error, ErrorKind}, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use ratatui::{buffer::Buffer, crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
 use aes_gcm::Aes256Gcm;
@@ -30,10 +30,12 @@ struct UI {
 
 impl App {
 
-    pub fn create_room(username: String) -> Self {
-        let (connectaddr, yggdr, servershutter) = server::create().unwrap();
+    pub fn create_room(username: String, port: String) -> Result<Self, Error> {
+        let (connectaddr, yggdr, servershutter) = server::create()?;
         let roomkeybytes = turn_to_32_bytes(connectaddr.clone()); // gg(g) in the end
-        Self {
+        let socket = UdpSocket::bind(format!("[::]:{}", port))?;
+        
+        Ok(Self {
             ui: UI {
                 username: username.clone(),
                 roomkey: BASE64_STANDARD.encode(roomkeybytes),
@@ -44,20 +46,34 @@ impl App {
                 showusers: true
             },
             connectaddr: connectaddr.clone(),
-            socket: UdpSocket::bind("[::]:9090").unwrap(),
+            socket,
             cipher: generate_aesgcm(roomkeybytes),
             exit: false,
             yggdr,
             servershutter: Some(servershutter)
-        }
+        })
     }
 
     pub fn join_room(username: String, roomkey: String, port: String) -> Result<Self, Error> {
         let yggdr = yggdrasil::start()?;
         let _ = yggdrasil::get_ipv6();
-        let decodedroomkey = BASE64_STANDARD.decode(roomkey.clone()).unwrap();
-        let connectaddr = String::from_utf8(decodedroomkey.clone()).unwrap().replace("g", "");
+
+        let decodedroomkey = match BASE64_STANDARD.decode(roomkey.clone()) {
+            Ok(decoded) => decoded,
+            Err(e) => return Err(Error::new(ErrorKind::InvalidData, e))
+        };
+
+        let connectaddr = match String::from_utf8(decodedroomkey.clone()) {
+            Ok(decoded) => decoded.replace("g", ""),
+            Err(e) => return Err(Error::new(ErrorKind::InvalidData, e))
+        };
+        
         let roomkeybtes = turn_to_32_bytes(connectaddr.clone());
+
+        let socket = match UdpSocket::bind(format!("[::]:{}", port)) {
+            Ok(s) => s,
+            Err(e) => return Err(e)
+        };
 
         Ok(Self {
             ui: UI {
@@ -70,7 +86,7 @@ impl App {
                 showusers: true
             },
             connectaddr,
-            socket: UdpSocket::bind(format!("[::]:{}", port)).unwrap(),
+            socket,
             cipher: generate_aesgcm(roomkeybtes),
             exit: false,
             yggdr,
@@ -80,6 +96,7 @@ impl App {
 
 
     pub fn run(&mut self, terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
+        let mut error: Option<Error>;
         // Attempt to establish a connection to the specified address
         match self.socket.connect(self.connectaddr.clone()) {
             Ok(_) => {}
@@ -88,15 +105,20 @@ impl App {
             }
         }
         
-        self.socket.set_nonblocking(true).unwrap();
+        match self.socket.set_nonblocking(true) {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(e);
+            }
+        }
 
-        let mut buffer = [0; 1024]; // Storing incoming data here. this limit may be higher
+        let mut buffer = [0; 10240]; // Storing incoming data here. this limit may be higher
 
         // This had to be changed
         thread::sleep(time::Duration::from_millis(3000));
 
         // Send the username as the initial message to the server
-        self.socket.send(self.ui.username.as_bytes()).unwrap();
+        error = self.socket.send(self.ui.username.as_bytes()).err();
 
         // Main loop that runs until the exit flag is set
         while !self.exit {
@@ -105,15 +127,29 @@ impl App {
                 Ok((size, _)) => {
                     // Check if the received data is smaller than 12 bytes, indicating a username
                     if size < 12 {
-                        let username = String::from_utf8(buffer[..size].to_vec()).unwrap();
+                        let username = match String::from_utf8(buffer[..size].to_vec()) {
+                            Ok(username) => username,
+                            Err(_) => {
+                                error = Some(Error::new(ErrorKind::Other, "An unexpected behaved connection occured when getting join information. Blossom will close itself for security reasons."));
+                                break;
+                            }
+                        };
                         // Add the new user to the room users list and history
                         self.ui.roomusers.push(Line::from(username.clone()).red());
                         self.ui.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
                     } else {
                         // Decrypt the received message
-                        let decrypted = crypt::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap();
+                        let decrypted =crypt::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap_or("Failed to decrypt this message".to_string());
+
                         // Split the decrypted message into username and message parts
-                        let (username, message) = decrypted.split_once('|').unwrap();
+                        let (username, message) = match decrypted.split_once('|') {
+                            Some((username, message)) => (username, message),
+                            None => {
+                                error = Some(Error::new(ErrorKind::Other, "An unexpected behaved connection occured when processing decrypted message. Blossom will close itself for security reasons."));
+                                break;
+                            }
+                        };
+
                         // Add the message to the chat history
                         self.ui.history.append(&mut vec![Line::from(vec!["[".cyan(), username.to_owned().cyan(), "] ".cyan(), message.to_owned().gray()])]);
                     }
@@ -131,20 +167,48 @@ impl App {
 
             // Draw the current state of the terminal UI
             terminal.draw(|f| self.draw(f))?;
+
             // Handle any user input events
-            self.handle_events().unwrap();
+            error = self.handle_events().err();
+            if error.is_some() { break; }
         }
         
         // Perform a graceful shutdown of the application
-        self.yggdr.kill().unwrap(); // Terminate the yggdrasil process
-        if let Some(servershutter) = &self.servershutter {
-            servershutter.send(()).unwrap(); // Send a shutdown signal to the server
-            yggdrasil::del_addr(self.connectaddr.clone()).unwrap(); // Delete the yggdrasil address
-        }
-        yggdrasil::delconf()?; // Delete the configuration file
-        yggdrasil::del_log()?; // Delete the log file
 
-        Ok(()) // Return success
+        // Terminate the yggdrasil process
+        match self.yggdr.kill(){
+            Ok(_) => {},
+            Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to terminate yggdrasil process: {}", e)))
+        }
+        
+        if let Some(servershutter) = &self.servershutter {
+            // Send a shutdown signal to the server
+            match servershutter.send(()) {
+                Ok(_) => {},
+                Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to send shutdown signal to the server: {}", e)))
+            }
+            // Delete the yggdrasil address
+            match yggdrasil::del_addr(self.connectaddr.clone()) {
+                Ok(_) => {},
+                Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to delete yggdrasil address: {}\r\n{}", e, "Start and close Blossom again to fix this.")))
+            }
+        }
+        // Delete the configuration file
+        match yggdrasil::delconf() {
+            Ok(_) => {},
+            Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to delete configuration file: {}", e)))
+        }
+
+        // Delete the log file
+        match yggdrasil::del_log() {
+            Ok(_) => {},
+            Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to delete log file: {}", e)))
+        }
+
+        if let Some(error) = error {
+            return Err(error);
+        }
+        Ok(())
     }
 
     fn draw(&self, frame: &mut Frame) {

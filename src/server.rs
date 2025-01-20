@@ -40,16 +40,15 @@ fn run(connect_addr: String, serverrx: Receiver<()>) {
         Err(e) => panic!("Failed to bind to socket: {}\n{}", e, connect_addr),
     };
 
-    //let mut rooms: HashMap<String, Vec<User>> = HashMap::new();
     let mut users: Vec<User> = Vec::new();
     loop {
-        let mut buffer = [0; 1024];
+        let mut buffer = [0; 10240];
         match socket.recv_from(&mut buffer) {
             Ok((size, addr)) => {
                 if serverrx.try_recv().is_ok() { // exit signal check
                     break;
                 }
-                //// let room: String = String::from_utf8_lossy(&buffer[..32]).to_string(); ////
+                
                 // check if the user is already in the room
                 if !users.iter().any(|user| user.addr == addr) {// user is not in the room yet
                     // add him to the room

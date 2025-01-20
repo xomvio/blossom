@@ -24,10 +24,10 @@ Options:
     for i in 1..std::env::args().len() {
         if let Some(arg) = std::env::args().nth(i) {
             match arg.as_str() {
-                "--username" | "-u" => username = std::env::args().nth(i + 1).expect(&help),
-                "--roomkey" | "-r" => roomkey = std::env::args().nth(i + 1).expect(&help),
-                "--port" | "-p" => port = std::env::args().nth(i + 1).expect(&help),
-                "--help" | "-h" => panic!("{}", help),
+                "--username" | "-u" => username = std::env::args().nth(i + 1).expect(help),
+                "--roomkey" | "-r" => roomkey = std::env::args().nth(i + 1).expect(help),
+                "--port" | "-p" => port = std::env::args().nth(i + 1).expect(help),
+                "--help" | "-h" => return Ok(println!("{}", help)),
                 _ => {}                
             }
         }
@@ -41,7 +41,7 @@ Options:
 
     let app_result = if roomkey.is_empty() {
         //BASE64_STANDARD.encode_string(crypt::generate_roomkey(), &mut roomkey);
-        App::create_room(username).run(&mut terminal)
+        App::create_room(username, port)?.run(&mut terminal)
     }
     else {
         App::join_room(username, roomkey, port)?.run(&mut terminal)

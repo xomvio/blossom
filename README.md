@@ -48,9 +48,3 @@ blossom [--username <username>] [--roomkey <roomkey>]
 
 ## Contributing
 Contributions are welcome! If you'd like to contribute to the project, please fork the repository and submit a pull request with your changes.
-
-
-
-
-
-
