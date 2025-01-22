@@ -36,7 +36,7 @@ fn check() -> Result<(), Error> {
 
     /// edits yggdrasil.conf file to add peer address (adds only armenian public peer because its close to me lol)
 fn add_peers() -> Result<(), Error> {
-    let mut file = fs::File::open("yggdrasil.conf")?;
+    let mut file = fs::File::open("/tmp/yggdrasil.conf")?;
     
     let mut content = String::new();
     file.read_to_string(&mut content)?;
@@ -45,7 +45,7 @@ fn add_peers() -> Result<(), Error> {
         quic://37.186.113.100:1515
     ]"#);
 
-    fs::write("yggdrasil.conf", content)?;
+    fs::write("/tmp/yggdrasil.conf", content)?;
 
     Ok(())
 }
@@ -55,7 +55,7 @@ fn add_peers() -> Result<(), Error> {
 fn run() -> Result<Child, Error> {
     Command::new("sh")
     .arg("-c")
-    .arg("sudo yggdrasil -useconffile yggdrasil.conf -logto yggdrasil.log")
+    .arg("sudo yggdrasil -useconffile /tmp/yggdrasil.conf -logto /tmp/yggdrasil.log")
     .stdin(Stdio::null())
     .stderr(Stdio::null())
     .stdout(Stdio::null())
@@ -71,7 +71,7 @@ fn run() -> Result<Child, Error> {
 fn generate_conf() -> Result<(), Error> {
     match Command::new("sh")
         .arg("-c")
-        .arg("sudo yggdrasil -genconf > yggdrasil.conf")
+        .arg("sudo yggdrasil -genconf > /tmp/yggdrasil.conf")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .stdout(Stdio::null())
@@ -85,7 +85,7 @@ fn generate_conf() -> Result<(), Error> {
 pub fn delconf() -> Result<(), Error> {
     match Command::new("sh")
         .arg("-c")
-        .arg("sudo rm yggdrasil.conf")
+        .arg("sudo rm /tmp/yggdrasil.conf")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .stdout(Stdio::null())
@@ -104,7 +104,7 @@ pub fn wait_for_start() {
         if start.elapsed() > timeout {
             panic!("timed out waiting for yggdrasil to start");
         }
-        let mut file = match fs::File::open("yggdrasil.log") {
+        let mut file = match fs::File::open("/tmp/yggdrasil.log") {
             Ok(file) => file,
             Err(_) => continue  // this file is not created yet. try again
         };
@@ -132,7 +132,7 @@ pub fn get_ipv6() -> Result<String, Error> {
     // Wait for yggdrasil to start    
     wait_for_start();
 
-    match std::fs::File::open("yggdrasil.log") {
+    match std::fs::File::open("/tmp/yggdrasil.log") {
         Ok(mut file) => {
 
             let mut buf = String::new();
@@ -202,7 +202,7 @@ pub fn del_addr(addr: String) -> Result<(), Error> {
 pub fn del_log() -> Result<(), Error> {
     match Command::new("sh")
         .arg("-c")
-        .arg("sudo rm yggdrasil.log")
+        .arg("sudo rm /tmp/yggdrasil.log")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .stdout(Stdio::null())

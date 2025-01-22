@@ -28,7 +28,7 @@ Options:
                 "--roomkey" | "-r" => roomkey = std::env::args().nth(i + 1).expect(help),
                 "--port" | "-p" => port = std::env::args().nth(i + 1).expect(help),
                 "--help" | "-h" => return Ok(println!("{}", help)),
-                _ => {}                
+                _ => return Ok(println!("{}", help))
             }
         }
     }

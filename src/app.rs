@@ -112,7 +112,7 @@ impl App {
             }
         }
 
-        let mut buffer = [0; 10240]; // Storing incoming data here. this limit may be higher
+        let mut buffer = [0; 10240]; // Storing incoming data here. this limit may change
 
         // This had to be changed
         thread::sleep(time::Duration::from_millis(3000));
@@ -193,7 +193,7 @@ impl App {
                 Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to delete yggdrasil address: {}\r\n{}", e, "Start and close Blossom again to fix this.")))
             }
         }
-        // Delete the configuration file
+        // Delete the configuration file        
         match yggdrasil::delconf() {
             Ok(_) => {},
             Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to delete configuration file: {}", e)))
