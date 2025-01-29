@@ -302,7 +302,7 @@ impl Widget for &App {
             history.drain(0..(history.len() - (heightleft - 6) as usize));
         }
         Paragraph::new(history)
-            .block(block.to_owned().title(Line::from(" Dinle ").centered()))
+            .block(block.to_owned().title(Line::from(" Blossom ").centered()))
             .style(style.to_owned())
             .render(Rect { x: area.width - widthleft, y: area.height - heightleft, width: widthleft, height: heightleft - 4 }, buf);
 
