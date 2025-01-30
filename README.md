@@ -4,9 +4,6 @@ Blossom is a decentralized TUI chat application that utilizes the Yggdrasil netw
 
 ![image](https://github.com/user-attachments/assets/29b8ce7d-9fe8-433c-92dd-1d662c9b84cd)
 
-## Warning
-Blossom aims to be secure but it is very young and has vulnerabilities right now.
-
 ## Features
 - Decentralized chat architecture using Yggdrasil network
 - Create or join chat rooms with unique room keys
