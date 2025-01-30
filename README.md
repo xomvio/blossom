@@ -11,28 +11,24 @@ Blossom aims to be secure but it is very young and has vulnerabilities right now
 - Decentralized chat architecture using Yggdrasil network
 - Create or join chat rooms with unique room keys
 - Real-time communication between users in the same room
-- End-to-end encryption using AES-256-GCM (plus Yggdrasil's encryption)
+- End-to-end encryption from Yggdrasil
 
 ## Requirements
 - Yggdrasil installed on the system.
 
-
-## How is it Works
+## How Does it Work
 ### Running the Blossom
 Blossom must be run as sudo. This is because Blossom will handle Yggdrasil and IPv6 address every time you connect to a room.
 This means every time you created or joined a room, you do it with a disposable IPv6 address in yggdrasil network.
 
 ### User Creates or Joins a Chat Room
-Running Blossom without CLI arguments means creating and hosting a new chat session with a random username. You can specify the username using the --username argument. --roomkey argument is for joining an existing chat session. Roomkey is simply a base64 encoded version of the host's temporary IPv6 address.
+Running Blossom without CLI arguments means creating and hosting a new chat session with a random username. If you want to join an existing room, you should use --roomkey argument which your host will give you. Roomkey is simply a base64 encoded version of the host's temporary IPv6 address.
 
 ### Generating a Unique Node ID
 When the Blossom is ran, it generates a unique node ID using the Yggdrasil network's cryptographic algorithms. This node ID is used to find the host's machine on the network.
 
-### Sending a message
-When a user sends a message, Blossom encrypts the message using the AES-256-GCM encryption algorithm and sends it to the host's local server via Yggdrasil.
-
-### Receiving Message at Host
-Every user in the room sends their messages into host's local server. When the host's machine receives the message, it sends message to everyone in the chat room including self. Well... This may sounds like we are centralizing the host a little bit. But we can talk about it.
+### Sending and Receiving Messages
+Each user in the room sends their messages to the host's machine. When the host's machine receives the message, it sends the message to everyone in the chat room, including itself. That is, not everyone is both a server and a client at the same time. Which means only host will reveal its temporary address to everyone in the room. The addresses of the room participants are only revealed to the host.
 
 ### Closing the Blossom
 Using Ctrl + C is important to gracefully shutdown the application. This is:
@@ -41,9 +37,8 @@ Using Ctrl + C is important to gracefully shutdown the application. This is:
 - Deletes IPv6 address from loopback. (if you are host)
 
 ## Usage
-
 ```bash
-blossom [--username <username>] [--roomkey <roomkey>]
+sudo blossom [--roomkey <roomkey>] [--username <username>] [--port <port>]
 ```
 
 ## Contributing
