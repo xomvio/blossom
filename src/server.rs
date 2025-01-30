@@ -1,4 +1,3 @@
-use core::time;
 use std::{io::Result, net::{SocketAddr, UdpSocket}, process::Child, sync::mpsc::{Receiver, Sender}, thread};
 use std::sync::mpsc;
 
@@ -33,8 +32,9 @@ struct User {
 }
 
 fn run(connect_addr: String, serverrx: Receiver<()>) {
-    //panic!("Yggdrasil IPv6 address: {}", connect_addr);
-    thread::sleep(time::Duration::from_millis(2000));
+
+    // wait for yggdrasil to start
+    //thread::sleep(time::Duration::from_millis(2000));
     let socket = match UdpSocket::bind(connect_addr.clone()) {
         Ok(s) => s,
         Err(e) => panic!("Failed to bind to socket: {}\n{}", e, connect_addr),

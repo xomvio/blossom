@@ -98,7 +98,7 @@ pub fn delconf() -> Result<(), Error> {
 
 pub fn wait_for_start() {
     let start = Instant::now();
-    let timeout = Duration::from_secs(5);
+    let timeout = Duration::from_secs(10);
     loop {
         thread::sleep(Duration::from_millis(200));
         if start.elapsed() > timeout {
