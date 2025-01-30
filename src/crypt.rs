@@ -1,12 +1,14 @@
 use aes_gcm::{aead::{Aead, AeadCore, Key, KeyInit, OsRng}, Aes256Gcm, Nonce};
 use rand::RngCore;
 
+/// DEPRECATED
+#[allow(dead_code)]
 pub fn generate_aesgcm(roomkeybytes: [u8; 32]) -> Aes256Gcm {
     let key = Key::<Aes256Gcm>::from_slice(&roomkeybytes);
     Aes256Gcm::new(key)
 }
 
-pub fn turn_to_32_bytes(roomkey: String) -> [u8; 32] {
+pub fn convert_to_32_bytes(roomkey: String) -> [u8; 32] {
     let roomkeybytes = roomkey.as_bytes();
     let mut base = [103u8; 32];
     if roomkeybytes.len() > 32 {
@@ -46,6 +48,9 @@ pub fn generate_rnd_str(length: usize) -> String {
     /// than the input message.
     /// 
     /// If encryption fails, this function will panic.
+    /// 
+    /// DEPRECATED
+#[allow(dead_code)]
 pub fn encrypt(cipher: &Aes256Gcm, message: String) -> Vec<u8> {
     // Generate a random nonce
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
@@ -71,6 +76,8 @@ pub fn encrypt(cipher: &Aes256Gcm, message: String) -> Vec<u8> {
     ///
     /// If decryption fails, this function will cry and panic.
     ///
+    /// DEPRECATED
+#[allow(dead_code)]
 pub fn decrypt(cipher: &Aes256Gcm, encrypted_data: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     // The first 12 bytes should be the nonce
     if encrypted_data.len() < 12 {

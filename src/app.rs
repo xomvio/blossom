@@ -2,15 +2,14 @@ use core::time;
 use std::{io::{self, Error, ErrorKind}, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use ratatui::{buffer::Buffer, crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
-use aes_gcm::Aes256Gcm;
+//use aes_gcm::Aes256Gcm;
 
-use crate::{crypt::{self, generate_aesgcm, turn_to_32_bytes}, server, yggdrasil};
+use crate::{crypt::convert_to_32_bytes, server, yggdrasil};
 
 pub struct App {
     ui: UI,
     connectaddr: String,
     socket: UdpSocket,
-    cipher: Aes256Gcm,
     exit: bool,
     yggdr: Child,
     servershutter: Option<Sender<()>>,
@@ -32,7 +31,7 @@ impl App {
 
     pub fn create_room(username: String, port: String) -> Result<Self, Error> {
         let (connectaddr, yggdr, servershutter) = server::create()?;
-        let roomkeybytes = turn_to_32_bytes(connectaddr.clone()); // gg(g) in the end
+        let roomkeybytes = convert_to_32_bytes(connectaddr.clone()); // gg(g) in the end
         let socket = UdpSocket::bind(format!("[::]:{}", port))?;
         
         Ok(Self {
@@ -47,7 +46,6 @@ impl App {
             },
             connectaddr: connectaddr.clone(),
             socket,
-            cipher: generate_aesgcm(roomkeybytes),
             exit: false,
             yggdr,
             servershutter: Some(servershutter)
@@ -68,7 +66,7 @@ impl App {
             Err(e) => return Err(Error::new(ErrorKind::InvalidData, e))
         };
         
-        let roomkeybtes = turn_to_32_bytes(connectaddr.clone());
+        //let roomkeybtes = turn_to_32_bytes(connectaddr.clone());
 
         let socket = match UdpSocket::bind(format!("[::]:{}", port)) {
             Ok(s) => s,
@@ -87,7 +85,6 @@ impl App {
             },
             connectaddr,
             socket,
-            cipher: generate_aesgcm(roomkeybtes),
             exit: false,
             yggdr,
             servershutter: None
@@ -138,9 +135,12 @@ impl App {
                         self.ui.roomusers.push(Line::from(username.clone()).red());
                         self.ui.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
                     } else {
-                        // Decrypt the received message
-                        let decrypted =crypt::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap_or("Failed to decrypt this message".to_string());
 
+                        // ENCRYPTION IS DEPRECATED
+                        // Decrypt the received message
+                        //let decrypted =crypt::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap_or("Failed to decrypt this message".to_string());
+
+                        let decrypted = String::from_utf8(buffer[..size].to_vec()).unwrap_or("Failed to get message".to_string());
                         // Split the decrypted message into username and message parts
                         let (username, message) = match decrypted.split_once('|') {
                             Some((username, message)) => (username, message),
@@ -248,8 +248,16 @@ impl App {
             KeyCode::F(1) => self.ui.showusers = !self.ui.showusers,
             KeyCode::F(2) => self.ui.showkey = !self.ui.showkey,
             KeyCode::Enter => {
-                let encrypted = crypt::encrypt(&self.cipher, self.ui.username.clone() + "|" + &self.ui.input);
-                self.socket.send(&encrypted).unwrap();
+                // Sending a message
+                
+                // if the input is empty, do nothing
+                if self.ui.input.is_empty() { return; }
+
+                // ENCRYPTION IS DEPRECATED
+                //let encrypted = crypt::encrypt(&self.cipher, self.ui.username.clone() + "|" + &self.ui.input);
+                //self.socket.send(&encrypted).unwrap();
+
+                self.socket.send(format!("{}|{}", self.ui.username, self.ui.input).as_bytes()).unwrap();
                 self.ui.input.clear();
             },
             KeyCode::Backspace => {

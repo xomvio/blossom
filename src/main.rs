@@ -21,18 +21,16 @@ Options:
   -h, --help                   Display this help message.
 "#;
 
-    for i in 1..std::env::args().len() {
-        if let Some(arg) = std::env::args().nth(i) {
-            match arg.as_str() {
-                "--username" | "-u" => username = std::env::args().nth(i + 1).expect(help),
-                "--roomkey" | "-r" => roomkey = std::env::args().nth(i + 1).expect(help),
-                "--port" | "-p" => port = std::env::args().nth(i + 1).expect(help),
-                "--help" | "-h" => return Ok(println!("{}", help)),
-                _ => return Ok(println!("{}", help))
-            }
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--username" | "-u" => username = args.next().expect(help),
+            "--roomkey" | "-r" => roomkey = args.next().expect(help),
+            "--port" | "-p" => port = args.next().expect(help),
+            "--help" | "-h" => return Ok(println!("{}", help)),
+            _ => return Ok(println!("{}", help))
         }
     }
-    
     let mut terminal = ratatui::init();
 
     if username.is_empty() {
