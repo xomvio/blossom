@@ -1,6 +1,6 @@
 # Blossom
 
-Blossom is a decentralized TUI chat application that utilizes the Yggdrasil network to establish connections between users. Blossom allows users to create or join chat rooms, and communicate with each other in real-time.
+Blossom is a decentralized TUI chat application that utilizes the Yggdrasil network to establish connections between users. Every connection is made with an automated single-use configuration. Blossom allows users to  create or join chat rooms, and communicate with each other in real-time.
 
 ![image](https://github.com/user-attachments/assets/29b8ce7d-9fe8-433c-92dd-1d662c9b84cd)
 
@@ -14,7 +14,10 @@ Blossom aims to be secure but it is very young and has vulnerabilities right now
 - End-to-end encryption from Yggdrasil
 
 ## Requirements
+- Unix-like operating system.
 - Yggdrasil installed on the system.
+- IPv6 support is enabled. (IPv6 connection is not needed)
+- A potato computer
 
 ## How Does it Work
 ### Running the Blossom
@@ -30,16 +33,17 @@ When the Blossom is ran, it generates a unique node ID using the Yggdrasil netwo
 ### Sending and Receiving Messages
 Each user in the room sends their messages to the host's machine. When the host's machine receives the message, it sends the message to everyone in the chat room, including itself. That is, not everyone is both a server and a client at the same time. Which means only host will reveal its temporary address to everyone in the room. The addresses of the room participants are only revealed to the host.
 
+## Usage
+```bash
+sudo blossom [--roomkey <roomkey>] [--username <username>] [--port <port>]
+```
 ### Closing the Blossom
 Using Ctrl + C is important to gracefully shutdown the application. This is:
 - Stops Yggdrasil connection
 - Deletes disposable Yggdrasil config
 - Deletes IPv6 address from loopback. (if you are host)
 
-## Usage
-```bash
-sudo blossom [--roomkey <roomkey>] [--username <username>] [--port <port>]
-```
+If you somehow close Blossom ungracefully, That's okay. Just start Blossom and shutdown again with Ctrl+C. Blossom will fix itself.
 
 ## Contributing
 Contributions are welcome! If you'd like to contribute to the project, please fork the repository and submit a pull request with your changes.
