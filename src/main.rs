@@ -13,8 +13,8 @@ struct Cli {
     username: Option<String>,
     #[arg(short, long)]
     roomkey: Option<String>,
-    #[arg(short, long, default_value = "9191")]
-    port: String,
+    #[arg(short, long)]
+    port: Option<String>,
 }
 
 //building a chat app here
@@ -27,8 +27,8 @@ fn main() -> io::Result<()> {
     let username = cli.username.unwrap_or_else(|| crypt::generate_rnd_str(10));
 
     let app_result = match cli.roomkey {
-        Some(roomkey) => App::join_room(username, roomkey, cli.port)?.run(&mut terminal),
-        None => App::create_room(username, cli.port)?.run(&mut terminal)
+        Some(roomkey) => App::join_room(username, roomkey, cli.port.unwrap_or( "9192".to_string()))?.run(&mut terminal),
+        None => App::create_room(username, cli.port.unwrap_or("9191".to_string()))?.run(&mut terminal)
     };
     
     ratatui::restore();
