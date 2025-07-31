@@ -68,10 +68,7 @@ impl App {
         
         //let roomkeybtes = turn_to_32_bytes(connectaddr.clone());
 
-        let socket = match UdpSocket::bind(format!("[::]:{}", port)) {
-            Ok(s) => s,
-            Err(e) => return Err(e)
-        };
+        let socket = UdpSocket::bind(format!("[::]:{}", port))?;
 
         Ok(Self {
             ui: UI {
@@ -127,7 +124,7 @@ impl App {
                         let username = match String::from_utf8(buffer[..size].to_vec()) {
                             Ok(username) => username,
                             Err(_) => {
-                                error = Some(Error::new(ErrorKind::Other, "An unexpected behaved connection occured when getting join information. Blossom will close itself for security reasons."));
+                                error = Some(Error::other("An unexpected behaved connection occured when getting join information. Blossom will close itself for security reasons."));
                                 break;
                             }
                         };
@@ -145,7 +142,7 @@ impl App {
                         let (username, message) = match decrypted.split_once('|') {
                             Some((username, message)) => (username, message),
                             None => {
-                                error = Some(Error::new(ErrorKind::Other, "An unexpected behaved connection occured when processing decrypted message. Blossom will close itself for security reasons."));
+                                error = Some(Error::other("An unexpected behaved connection occured when processing decrypted message. Blossom will close itself for security reasons."));
                                 break;
                             }
                         };
@@ -178,31 +175,31 @@ impl App {
         // Terminate the yggdrasil process
         match self.yggdr.kill(){
             Ok(_) => {},
-            Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to terminate yggdrasil process: {}", e)))
+            Err(e) => error = Some(Error::other(format!("Failed to terminate yggdrasil process: {}\r\n{}", e, "Start and quit Blossom again to try to fix this.")))
         }
         
         if let Some(servershutter) = &self.servershutter {
             // Send a shutdown signal to the server
             match servershutter.send(()) {
                 Ok(_) => {},
-                Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to send shutdown signal to the server: {}", e)))
+                Err(e) => error = Some(Error::other(format!("Failed to send shutdown signal to the server: {}\r\n{}", e, "Start and quit Blossom again to try to fix this.")))
             }
             // Delete the yggdrasil address
             match yggdrasil::del_addr(self.connectaddr.clone()) {
                 Ok(_) => {},
-                Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to delete yggdrasil address: {}\r\n{}", e, "Start and close Blossom again to fix this.")))
+                Err(e) => error = Some(Error::other(format!("Failed to delete yggdrasil address: {}\r\n{}", e, "Start and quit Blossom again to try to fix this.")))
             }
         }
         // Delete the configuration file        
         match yggdrasil::delconf() {
             Ok(_) => {},
-            Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to delete configuration file: {}", e)))
+            Err(e) => error = Some(Error::other(format!("Failed to delete configuration file: {}\r\n{}", e, "Start and quit Blossom again to try to fix this.")))
         }
 
         // Delete the log file
         match yggdrasil::del_log() {
             Ok(_) => {},
-            Err(e) => error = Some(Error::new(ErrorKind::Other, format!("Failed to delete log file: {}", e)))
+            Err(e) => error = Some(Error::other(format!("Failed to delete log file: {}\r\n{}", e, "Start and quit Blossom again to try to fix this.")))
         }
 
         if let Some(error) = error {

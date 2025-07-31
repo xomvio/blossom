@@ -1,7 +1,6 @@
 use std::io;
 mod crypt;
 mod server;
-mod tests;
 mod yggdrasil;
 mod app;
 use app::App;
