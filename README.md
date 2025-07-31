@@ -11,10 +11,9 @@ Blossom is a decentralized TUI chat application that utilizes the Yggdrasil netw
 - End-to-end encryption from Yggdrasil
 
 ## Requirements
-- Unix-like operating system.
-- Yggdrasil installed on the system.
+- A computer with Linux (or Unix-like operating system which spesifically compatible with blossom).
+- Yggdrasil already installed on the system.
 - IPv6 support is enabled. (IPv6 connection is not needed)
-- A potato computer
 
 ## How Does it Work
 ### Running the Blossom
