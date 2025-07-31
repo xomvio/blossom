@@ -1,6 +1,6 @@
 [package]
 name = "blossom"
-version = "0.1.0"
+version = "0.0.3"
 edition = "2021"
 
 [dependencies]
@@ -8,3 +8,4 @@ ratatui = "0.29.0"
 rand = "0.8.5"
 aes-gcm = "0.10.3"
 base64 = "0.21.0"
+clap = { version = "4.5.42", features = ["derive"]}
