@@ -1,5 +1,5 @@
 use core::panic;
-use std::{fs, io::{Error, Read}, process::{Child, Command, Stdio}, thread, time::{Duration, Instant}};
+use std::{fs, io::{Error, ErrorKind, Read}, process::{Child, Command, Stdio}, thread, time::{Duration, Instant}};
 
 pub fn start(port: &str) -> Result<Child, Error> {
     check(port)?;
@@ -13,6 +13,18 @@ pub fn start(port: &str) -> Result<Child, Error> {
 
 fn check(port: &str) -> Result<(), Error> {
 
+    // check if port is already in use
+    let port = match port.parse::<u16>() {
+        Ok(port) => port,
+        Err(e) => return Err(Error::new(ErrorKind::InvalidData, e))
+    };
+    let port_used = Command::new("lsof")
+        .arg(format!("-i:{}", port))
+        .output()?;
+    if port_used.status.success() {
+        return Err(Error::new(ErrorKind::AlreadyExists, "port is already in use"));
+    }
+
     // check if yggdrasil is installed
     let ygg_exists = Command::new("which").arg("yggdrasil").output()?;
     if !ygg_exists.status.success() {
@@ -23,6 +35,8 @@ fn check(port: &str) -> Result<(), Error> {
     // check if yggdrasil is already running
     let ygg_running = Command::new("pgrep").arg("yggdrasil").output()?;
     if ygg_running.status.success() {
+
+        // kill yggdrasil
         let kill_ygg = Command::new("sudo")
         .arg("killall")
         .arg("yggdrasil")
@@ -36,7 +50,7 @@ fn check(port: &str) -> Result<(), Error> {
     }
     // or return an error to user and they can stop maybe?
     //return Err(Error::new(ErrorKind::AlreadyExists, "yggdrasil is already running"));
-    
+
 
     Ok(())
 }
