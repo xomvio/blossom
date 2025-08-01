@@ -12,6 +12,13 @@ pub fn start() -> Result<Child, Error> {
 }
 
 fn check() -> Result<(), Error> {
+
+    // check if yggdrasil is installed
+    match Command::new("which").arg("yggdrasil").output() {
+        Ok(_) => {},
+        Err(e) => return Err(e)
+    }
+
     // check if yggdrasil is already running
     if Command::new("pgrep").arg("yggdrasil").output().is_ok() {
 
