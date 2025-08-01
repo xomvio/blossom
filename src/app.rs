@@ -30,7 +30,7 @@ struct UI {
 impl App {
 
     pub fn create_room(username: String, port: String) -> Result<Self, Error> {
-        let (connectaddr, yggdr, servershutter) = server::create()?;
+        let (connectaddr, yggdr, servershutter) = server::create(&port)?;
         let roomkeybytes = convert_to_32_bytes(connectaddr.clone()); // gg(g) in the end
         let socket = UdpSocket::bind(format!("[::]:{}", port))?;
         
@@ -53,7 +53,7 @@ impl App {
     }
 
     pub fn join_room(username: String, roomkey: String, port: String) -> Result<Self, Error> {
-        let yggdr = yggdrasil::start()?;
+        let yggdr = yggdrasil::start(&port)?;
         let _ = yggdrasil::get_ipv6();
 
         let decodedroomkey = match BASE64_STANDARD.decode(roomkey.clone()) {

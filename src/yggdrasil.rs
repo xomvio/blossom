@@ -1,8 +1,8 @@
 use core::panic;
 use std::{fs, io::{Error, Read}, process::{Child, Command, Stdio}, thread, time::{Duration, Instant}};
 
-pub fn start() -> Result<Child, Error> {
-    check()?;
+pub fn start(port: &str) -> Result<Child, Error> {
+    check(port)?;
 
     generate_conf()?;
 
@@ -11,32 +11,32 @@ pub fn start() -> Result<Child, Error> {
     run()
 }
 
-fn check() -> Result<(), Error> {
+fn check(port: &str) -> Result<(), Error> {
 
     // check if yggdrasil is installed
-    match Command::new("which").arg("yggdrasil").output() {
-        Ok(_) => {},
-        Err(e) => return Err(e)
+    let ygg_exists = Command::new("which").arg("yggdrasil").output()?;
+    if !ygg_exists.status.success() {
+        println!("yggdrasil exists");
+        return Err(Error::other("yggdrasil does not exist on your system. Please install yggdrasil."));
     }
 
     // check if yggdrasil is already running
-    if Command::new("pgrep").arg("yggdrasil").output().is_ok() {
-
-        // kill yggdrasil
-        match Command::new("sh")
-        .arg("-c")
-        .arg("sudo killall yggdrasil")
+    let ygg_running = Command::new("pgrep").arg("yggdrasil").output()?;
+    if ygg_running.status.success() {
+        let kill_ygg = Command::new("sudo")
+        .arg("killall")
+        .arg("yggdrasil")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
-        .stdout(Stdio::null())
-        .output() {
-            Ok(_) => {},
-            Err(e) => return Err(e)
-        }
+        .stdout(Stdio::null()).output()?;
 
-        // or return an error to user and they can stop maybe?
-        //return Err(Error::new(ErrorKind::AlreadyExists, "yggdrasil is already running"));
+        if !kill_ygg.status.success() {
+            return Err(Error::other("Failed to kill yggdrasil before starting a new one."));
+        }
     }
+    // or return an error to user and they can stop maybe?
+    //return Err(Error::new(ErrorKind::AlreadyExists, "yggdrasil is already running"));
+    
 
     Ok(())
 }

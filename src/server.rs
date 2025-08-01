@@ -3,10 +3,10 @@ use std::sync::mpsc;
 
 use crate::yggdrasil;
 
-pub fn create() -> Result<(String, Child, Sender<()>)> {
+pub fn create(port: &str) -> Result<(String, Child, Sender<()>)> {
 
     // start yggdrasil process and use it for exit later
-    let ygg = yggdrasil::start()?;
+    let ygg = yggdrasil::start(port)?;
 
     // get yggdrasil ipv6 address
     let mut connectaddr = yggdrasil::get_ipv6()?;
