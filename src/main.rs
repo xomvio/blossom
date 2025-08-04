@@ -24,7 +24,7 @@ fn main() -> io::Result<()> {
 
     let mut terminal = ratatui::init();
 
-    let username = cli.username.unwrap_or_else(|| crypt::generate_rnd_str(10));
+    let username = cli.username.unwrap_or_else(|| crypt::generate_rnd_str(10).unwrap_or("Guest".to_string()));
 
     let app_result = match cli.roomkey {
         Some(roomkey) => App::join_room(username, roomkey, cli.port.unwrap_or( "9192".to_string()))?.run(&mut terminal),
