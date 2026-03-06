@@ -38,19 +38,15 @@ fn run() -> Result<()> {
     let mut terminal = ratatui::init();
     
     let username = resolve_username(cli.username)?;
-    let config = RuntimeConfig::new(
-        username,
-        cli.port.unwrap_or_else(|| get_default_port(cli.roomkey.is_some())),
-        cli.roomkey.clone(),
-    );
+    let port = cli.port.unwrap_or_else(|| get_default_port(cli.roomkey.is_some()));
     
     let mut app = if let Some(roomkey) = cli.roomkey {
-        App::join_room(config, roomkey)?
+        App::join_room(username, roomkey, port.clone())?
     } else {
-        App::create_room(config)?
+        App::create_room(username, port)?
     };
     
-    app.run(&mut terminal)
+    Ok(app.run(&mut terminal)?)
 }
 
 /// Resolves the username from CLI args or generates a random one

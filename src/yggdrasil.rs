@@ -1,12 +1,13 @@
 use std::{
     fs,
-    io::{Error, ErrorKind, Read},
+    io::Read,
     process::{Child, Command, Stdio},
     thread,
     time::{Duration, Instant},
 };
 
 use crate::{config::Config, error::{BlossomError, Result}};
+use crate::config::RuntimeConfig;
 
 /// Starts Yggdrasil with proper configuration and peer setup
 /// 
@@ -193,8 +194,8 @@ pub fn delconf() -> Result<()> {
 /// Returns an error if Yggdrasil doesn't start within the timeout period
 pub fn wait_for_start() -> Result<()> {
     let start = Instant::now();
-    let timeout = Config::yggdrasil_startup_timeout();
-    let check_interval = Config::yggdrasil_log_check_interval();
+    let timeout = RuntimeConfig::yggdrasil_startup_timeout();
+    let check_interval = RuntimeConfig::yggdrasil_log_check_interval();
     
     loop {
         thread::sleep(check_interval);

@@ -1,9 +1,9 @@
 use core::time;
-use std::{io::{self, ErrorKind}, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
+use std::{io, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use ratatui::{buffer::Buffer, crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
 
-use crate::{crypt, server, yggdrasil};
+use crate::{crypt, server, yggdrasil, error::{Result, BlossomError}};
 
 pub struct App {
     ui: UI,
@@ -28,7 +28,7 @@ struct UI {
 
 impl App {
 
-    pub fn create_room(username: String, port: String) -> Result<Self, Error> {
+    pub fn create_room(username: String, port: String) -> Result<Self> {
         let (connectaddr, yggdr, servershutter) = server::create(&port)?;
         let roomkeybytes = crypt::convert_to_32_bytes(&connectaddr);
         let socket = UdpSocket::bind(format!("[::]:{}", port))?;
@@ -51,19 +51,19 @@ impl App {
         })
     }
 
-    pub fn join_room(username: String, roomkey: String, port: String) -> Result<Self, Error> {
+    pub fn join_room(username: String, roomkey: String, port: String) -> Result<Self> {
         let yggdr = yggdrasil::start(&port)?;
         let _ = yggdrasil::get_ipv6();
 
         let decodedroomkey = match BASE64_STANDARD.decode(roomkey.clone()) {
             Ok(decoded) => decoded,
-            Err(e) => return Err(Error::new(ErrorKind::InvalidData, e))
+            Err(e) => return Err(BlossomError::InvalidData(format!("Base64 decode error: {}", e)))
         };
 
         // Convert 32-byte array back to string (trim trailing 'g' padding)
         let connectaddr = match String::from_utf8(decodedroomkey.clone()) {
-            Ok(decoded) => crypt::strip_padding(&decoded),
-            Err(e) => return Err(Error::new(ErrorKind::InvalidData, e))
+            Ok(decoded_str) => crypt::strip_padding(&decoded_str.as_bytes()),
+            Err(e) => return Err(BlossomError::InvalidData(format!("UTF-8 conversion error: {}", e)))
         };
         
         let socket = UdpSocket::bind(format!("[::]:{}", port))?;
@@ -87,20 +87,20 @@ impl App {
     }
 
 
-    pub fn run(&mut self, terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
-        let mut error: Option<Error>;
+    pub fn run(&mut self, terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
+        let mut error: Option<BlossomError>;
         // Attempt to establish a connection to the specified address
         match self.socket.connect(self.connectaddr.clone()) {
             Ok(_) => {}
             Err(e) => {
-                return Err(e);
+                return Err(BlossomError::Io(e));
             }
         }
         
         match self.socket.set_nonblocking(true) {
             Ok(_) => {}
             Err(e) => {
-                return Err(e);
+                return Err(BlossomError::Io(e));
             }
         }
 
@@ -118,45 +118,44 @@ impl App {
             // Attempt to receive data from the socket
             match self.socket.recv_from(buffer.as_mut()) {
                 Ok((size, _)) => {
-                    // Check if the received data is smaller than 12 bytes, indicating a username
-                    if size < 30 { // Reasonable max for a username
-                        let username = match String::from_utf8(buffer[..size].to_vec()) {
-                            Ok(username) => username,
-                            Err(_) => {
-                                eprintln!("Unicode error in username - dropping");
-                                continue;
-                            }
-                        };
-                        // Add the new user to the room users list and history
-                        self.ui.roomusers.push(Line::from(username.clone()).red());
-                        self.ui.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
-                    } else {
-                        let decrypted = match String::from_utf8(buffer[..size].to_vec()) {
-                            Ok(s) => s,
-                            Err(_) => {
-                                eprintln!("Unicode error in message - dropping");
-                                continue;
-                            }
-                        };
+                    // Check if this is a user join notification (first message from new client)
+                    // In the server implementation, first messages are usernames only
+                    // We can distinguish by checking for pipe delimiter which indicates regular chat messages
+                    let received_data = match String::from_utf8(buffer[..size].to_vec()) {
+                        Ok(data) => data,
+                        Err(_) => {
+                            eprintln!("Unicode error in received data - dropping");
+                            continue;
+                        }
+                    };
 
-                        // Split the message into username and message parts using null byte as delimiter
-                        let (username, message) = match decrypted.split_once('\0') {
-                            Some((username, message)) => (username, message),
+                    // If this message contains a pipe, it's a chat message (username|message)
+                    // Otherwise, treat as user join notification or other system messages
+                    if received_data.contains('|') {
+                        // This is a regular chat message
+                        let (username, message) = match received_data.split_once('|') {
+                            Some((u, m)) => (u, m),
                             None => {
                                 eprintln!("Missing delimiter - treating whole buffer as message");
                                 // Treat entire buffer as a message from "Unknown"
-                                self.ui.history.push(Line::from(vec!["[".cyan(), "Unknown".cyan(), "] ".cyan(), &decrypted.gray()]));
+                                self.ui.history.push(Line::from(format!("[{}] {}", 
+                                    "Unknown".cyan(), received_data.gray())));
                                 continue;
                             }
                         };
 
-                        // Add the message to the chat history
-                        self.ui.history.push(Line::from(vec![
-                            Line::from("[").cyan(),
-                            Line::from(username).cyan(),
-                            Line::from("] ").cyan(),
-                            Line::from(message).gray()
-                        ]));
+                        // Add the message to the chat history - FIXED: Only show username once
+                        self.ui.history.push(Line::from(format!("[{}] {}", 
+                            username.cyan(), message.gray())));
+                    } else {
+                        // This appears to be a user join notification or system message
+                        // The server sends the username as first message when a new client connects
+                        let username = received_data.trim();
+                        if !username.is_empty() {
+                            // Add the new user to the room users list and history
+                            self.ui.roomusers.push(Line::from(username.to_string()).red());
+                            self.ui.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
+                        }
                     }
                 }
                 // Handle the case where the socket would block, indicating no data is available
@@ -300,27 +299,24 @@ impl Widget for &App {
             let users_width = 20.min(widthleft as u16 - 2);
             widthleft -= users_width;
             
-            let mut users: Vec<Line<'static>> = self.ui.roomusers.iter().map(|l| l.to_string()).collect();
+            let mut users: Vec<Line<'static>> = self.ui.roomusers.iter().cloned().collect();
             Paragraph::new(users)
                 .block(block.to_owned().title(" Users "))
                 .style(style.to_owned())
                 .render(Rect { x: 0, y: area.height - heightleft, width: users_width, height: heightleft }, buf);
         }
 
-        // Chat history (center)
+        // Chat history (center-right)
         let max_history = (heightleft.saturating_sub(6)) as usize;
-        if self.ui.history.len() > max_history {
-            self.ui.history.drain(0..(self.ui.history.len() - max_history));
-        }
         
-        Paragraph::new(&self.ui.history)
+        Paragraph::new(self.ui.history.clone())
             .block(block.to_owned().title(Line::from(" Blossom ").centered()))
             .style(style.to_owned())
             .render(Rect { x: area.width - widthleft, y: area.height - heightleft, width: widthleft, height: heightleft.saturating_sub(4) }, buf);
 
         // Message input (bottom)
         let input_height = 4.min(heightleft as u16);
-        Paragraph::new(&self.ui.input)
+        Paragraph::new(&*self.ui.input)
             .block(block.title(" Message "))
             .style(style)
             .render(Rect { x: area.width - widthleft, y: area.height - input_height, width: widthleft, height: input_height }, buf);
