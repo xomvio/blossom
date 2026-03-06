@@ -1,9 +1,10 @@
 use core::time;
-use std::{io::{self, ErrorKind}, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
+use std::{io::{self, Error, ErrorKind}, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use ratatui::{buffer::Buffer, crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
+//use aes_gcm::Aes256Gcm;
 
-use crate::{crypt, server, yggdrasil};
+use crate::{crypt::convert_to_32_bytes, server, yggdrasil};
 
 pub struct App {
     ui: UI,
@@ -30,7 +31,7 @@ impl App {
 
     pub fn create_room(username: String, port: String) -> Result<Self, Error> {
         let (connectaddr, yggdr, servershutter) = server::create(&port)?;
-        let roomkeybytes = crypt::convert_to_32_bytes(&connectaddr);
+        let roomkeybytes = convert_to_32_bytes(connectaddr.clone()); // gg(g) in the end
         let socket = UdpSocket::bind(format!("[::]:{}", port))?;
         
         Ok(Self {
@@ -60,12 +61,13 @@ impl App {
             Err(e) => return Err(Error::new(ErrorKind::InvalidData, e))
         };
 
-        // Convert 32-byte array back to string (trim trailing 'g' padding)
         let connectaddr = match String::from_utf8(decodedroomkey.clone()) {
-            Ok(decoded) => crypt::strip_padding(&decoded),
+            Ok(decoded) => decoded.replace("g", ""),
             Err(e) => return Err(Error::new(ErrorKind::InvalidData, e))
         };
         
+        //let roomkeybtes = turn_to_32_bytes(connectaddr.clone());
+
         let socket = UdpSocket::bind(format!("[::]:{}", port))?;
 
         Ok(Self {
@@ -106,12 +108,11 @@ impl App {
 
         let mut buffer = [0; 10240]; // Storing incoming data here. this limit may change
 
+        // This had to be changed
         thread::sleep(time::Duration::from_millis(3000));
 
-        // Send the username as the initial message to the server (null-byte delimited)
-        if self.socket.send(self.ui.username.as_bytes()).is_err() {
-            eprintln!("Failed to send username");
-        }
+        // Send the username as the initial message to the server
+        error = self.socket.send(self.ui.username.as_bytes()).err();
 
         // Main loop that runs until the exit flag is set
         while !self.exit {
@@ -119,44 +120,35 @@ impl App {
             match self.socket.recv_from(buffer.as_mut()) {
                 Ok((size, _)) => {
                     // Check if the received data is smaller than 12 bytes, indicating a username
-                    if size < 30 { // Reasonable max for a username
+                    if size < 12 {
                         let username = match String::from_utf8(buffer[..size].to_vec()) {
                             Ok(username) => username,
                             Err(_) => {
-                                eprintln!("Unicode error in username - dropping");
-                                continue;
+                                error = Some(Error::other("An unexpected behaved connection occured when getting join information. Blossom will close itself for security reasons."));
+                                break;
                             }
                         };
                         // Add the new user to the room users list and history
                         self.ui.roomusers.push(Line::from(username.clone()).red());
                         self.ui.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
                     } else {
-                        let decrypted = match String::from_utf8(buffer[..size].to_vec()) {
-                            Ok(s) => s,
-                            Err(_) => {
-                                eprintln!("Unicode error in message - dropping");
-                                continue;
-                            }
-                        };
 
-                        // Split the message into username and message parts using null byte as delimiter
-                        let (username, message) = match decrypted.split_once('\0') {
+                        // ENCRYPTION IS DEPRECATED
+                        // Decrypt the received message
+                        //let decrypted =crypt::decrypt(&self.cipher, buffer[..size].as_ref()).unwrap_or("Failed to decrypt this message".to_string());
+
+                        let decrypted = String::from_utf8(buffer[..size].to_vec()).unwrap_or("Failed to get message".to_string());
+                        // Split the decrypted message into username and message parts
+                        let (username, message) = match decrypted.split_once('|') {
                             Some((username, message)) => (username, message),
                             None => {
-                                eprintln!("Missing delimiter - treating whole buffer as message");
-                                // Treat entire buffer as a message from "Unknown"
-                                self.ui.history.push(Line::from(vec!["[".cyan(), "Unknown".cyan(), "] ".cyan(), &decrypted.gray()]));
-                                continue;
+                                error = Some(Error::other("An unexpected behaved connection occured when processing decrypted message. Blossom will close itself for security reasons."));
+                                break;
                             }
                         };
 
                         // Add the message to the chat history
-                        self.ui.history.push(Line::from(vec![
-                            Line::from("[").cyan(),
-                            Line::from(username).cyan(),
-                            Line::from("] ").cyan(),
-                            Line::from(message).gray()
-                        ]));
+                        self.ui.history.append(&mut vec![Line::from(vec!["[".cyan(), username.to_owned().cyan(), "] ".cyan(), message.to_owned().gray()])]);
                     }
                 }
                 // Handle the case where the socket would block, indicating no data is available
@@ -165,53 +157,54 @@ impl App {
                 }
                 // Handle any other errors that occur during reception
                 Err(e) => {
-                    eprintln!("Socket error: {}", e);
+                    println!("Error: ha!{}", e); // Log the error
                     break; // Exit the loop on error
                 }
             }
 
             // Draw the current state of the terminal UI
-            if let Err(e) = terminal.draw(|f| self.draw(f)) {
-                eprintln!("UI render error: {}", e);
-                continue;
-            }
+            terminal.draw(|f| self.draw(f))?;
 
             // Handle any user input events
-            if let Err(e) = self.handle_events() {
-                eprintln!("Event handling error: {}", e);
-                continue;
-            }
+            error = self.handle_events().err();
+            if error.is_some() { break; }
         }
         
         // Perform a graceful shutdown of the application
 
         // Terminate the yggdrasil process
-        if let Err(e) = self.yggdr.kill() {
-            eprintln!("Failed to terminate yggdrasil process: {}", e);
+        match self.yggdr.kill(){
+            Ok(_) => {},
+            Err(e) => error = Some(Error::other(format!("Failed to terminate yggdrasil process: {}\r\n{}", e, "Start and quit Blossom again to try to fix this.")))
         }
         
         if let Some(servershutter) = &self.servershutter {
             // Send a shutdown signal to the server
-            if servershutter.send(()).is_err() {
-                eprintln!("Failed to send shutdown signal to server");
+            match servershutter.send(()) {
+                Ok(_) => {},
+                Err(e) => error = Some(Error::other(format!("Failed to send shutdown signal to the server: {}\r\n{}", e, "Start and quit Blossom again to try to fix this.")))
             }
-            
             // Delete the yggdrasil address
-            if let Err(e) = yggdrasil::del_addr(self.connectaddr.clone()) {
-                eprintln!("Failed to delete Yggdrasil address: {}", e);
+            match yggdrasil::del_addr(self.connectaddr.clone()) {
+                Ok(_) => {},
+                Err(e) => error = Some(Error::other(format!("Failed to delete yggdrasil address: {}\r\n{}", e, "Start and quit Blossom again to try to fix this.")))
             }
         }
-        
-        // Delete the configuration file
-        if let Err(e) = yggdrasil::delconf() {
-            eprintln!("Failed to delete config file: {}", e);
-        }
-        
-        // Delete the log file
-        if let Err(e) = yggdrasil::del_log() {
-            eprintln!("Failed to delete log file: {}", e);
+        // Delete the configuration file        
+        match yggdrasil::delconf() {
+            Ok(_) => {},
+            Err(e) => error = Some(Error::other(format!("Failed to delete configuration file: {}\r\n{}", e, "Start and quit Blossom again to try to fix this.")))
         }
 
+        // Delete the log file
+        match yggdrasil::del_log() {
+            Ok(_) => {},
+            Err(e) => error = Some(Error::other(format!("Failed to delete log file: {}\r\n{}", e, "Start and quit Blossom again to try to fix this.")))
+        }
+
+        if let Some(error) = error {
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -254,13 +247,14 @@ impl App {
             KeyCode::Enter => {
                 // Sending a message
                 
+                // if the input is empty, do nothing
                 if self.ui.input.is_empty() { return; }
 
-                let msg = format!("{}|{}", self.ui.username, self.ui.input);
-                match self.socket.send(msg.as_bytes()) {
-                    Ok(_) => {},
-                    Err(e) => eprintln!("Failed to send message: {}", e),
-                };
+                // ENCRYPTION IS DEPRECATED
+                //let encrypted = crypt::encrypt(&self.cipher, self.ui.username.clone() + "|" + &self.ui.input);
+                //self.socket.send(&encrypted).unwrap();
+
+                self.socket.send(format!("{}|{}", self.ui.username, self.ui.input).as_bytes()).unwrap();
                 self.ui.input.clear();
             },
             KeyCode::Backspace => {
@@ -285,44 +279,41 @@ impl Widget for &App {
         let mut widthleft = area.width;
         let mut heightleft = area.height;
         
-        // Room key panel (top)
         if self.ui.showkey {
-            let room_key_height = 3.min(heightleft as u16);
+            heightleft -= 3;
             Paragraph::new(Line::from(self.ui.roomkey.clone()))
                 .block(block.to_owned().title(" Room Key "))
                 .style(style.to_owned())
-                .render(Rect { x: 0, y: 0, width: widthleft, height: room_key_height }, buf);
-            heightleft -= room_key_height;
+                .render(Rect { x: 0, y: 0, width: widthleft, height: 3 }, buf);
         }
 
-        // Users sidebar (right)
-        if self.ui.showusers && !self.ui.roomusers.is_empty() {
-            let users_width = 20.min(widthleft as u16 - 2);
-            widthleft -= users_width;
-            
-            let mut users: Vec<Line<'static>> = self.ui.roomusers.iter().map(|l| l.to_string()).collect();
+        if self.ui.showusers {
+            widthleft -= 20;
+            let mut users = Vec::new();
+            for user in self.ui.roomusers.iter() {
+                users.push(Line::from(user.clone().to_string()));
+            }
             Paragraph::new(users)
                 .block(block.to_owned().title(" Users "))
                 .style(style.to_owned())
-                .render(Rect { x: 0, y: area.height - heightleft, width: users_width, height: heightleft }, buf);
+                .render(Rect { x: 0, y: area.height - heightleft, width: 20, height: heightleft }, buf);
         }
 
-        // Chat history (center)
-        let max_history = (heightleft.saturating_sub(6)) as usize;
-        if self.ui.history.len() > max_history {
-            self.ui.history.drain(0..(self.ui.history.len() - max_history));
+        let mut history = Vec::new();
+        for message in &self.ui.history {
+            history.push(message.to_owned());
         }
-        
-        Paragraph::new(&self.ui.history)
+        if history.len() > (heightleft - 6) as usize {
+            history.drain(0..(history.len() - (heightleft - 6) as usize));
+        }
+        Paragraph::new(history)
             .block(block.to_owned().title(Line::from(" Blossom ").centered()))
             .style(style.to_owned())
-            .render(Rect { x: area.width - widthleft, y: area.height - heightleft, width: widthleft, height: heightleft.saturating_sub(4) }, buf);
+            .render(Rect { x: area.width - widthleft, y: area.height - heightleft, width: widthleft, height: heightleft - 4 }, buf);
 
-        // Message input (bottom)
-        let input_height = 4.min(heightleft as u16);
-        Paragraph::new(&self.ui.input)
-            .block(block.title(" Message "))
+        let input = Paragraph::new(self.ui.input.clone());
+        input.block(block.title(" Message "))
             .style(style)
-            .render(Rect { x: area.width - widthleft, y: area.height - input_height, width: widthleft, height: input_height }, buf);
+            .render(Rect { x: area.width - widthleft, y: area.height - 4, width: widthleft, height: 4 }, buf);
     }
 }

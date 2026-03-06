@@ -1,175 +1,76 @@
-use std::{
-    collections::HashMap,
-    net::{SocketAddr, UdpSocket},
-    process::Child,
-    sync::mpsc::{Receiver, Sender},
-    thread,
-    time::Duration,
-};
+use std::{io::Result, net::{SocketAddr, UdpSocket}, process::Child, sync::mpsc::{Receiver, Sender}, thread};
 use std::sync::mpsc;
 
-use crate::{config::Config, error::{BlossomError, Result}, yggdrasil};
+use crate::yggdrasil;
 
-/// Creates a new server instance with Yggdrasil networking
-/// 
-/// # Arguments
-/// * `port` - The port to bind the server to
-/// 
-/// # Returns
-/// A tuple containing (connection_address, yggdrasil_process, shutdown_sender)
-/// 
-/// # Errors
-/// Returns an error if Yggdrasil fails to start or network setup fails
 pub fn create(port: &str) -> Result<(String, Child, Sender<()>)> {
-    // Start yggdrasil process
-    let ygg_process = yggdrasil::start(port)?;
 
-    // Get yggdrasil IPv6 address
-    let mut connect_addr = yggdrasil::get_ipv6()?;
+    // start yggdrasil process and use it for exit later
+    let ygg = yggdrasil::start(port)?;
 
-    // Add yggdrasil address to loopback interface
-    yggdrasil::add_addr(connect_addr.clone())?;
+    // get yggdrasil ipv6 address
+    let mut connectaddr = yggdrasil::get_ipv6()?;
 
-    // Replace subnet notation with server port
-    connect_addr = connect_addr.replace("/64", &format!(":{}", Config::SERVER_PORT));
+    // add yggdrasil address to loopback
+    yggdrasil::add_addr(connectaddr.clone())?;
 
-    let connect_addr_clone = connect_addr.clone();
-    let (shutdown_tx, shutdown_rx) = mpsc::channel();
+    // include port to ipv6
+    connectaddr = connectaddr.replace("/64", ":9595");
     
-    // Start server in background thread
-    thread::spawn(move || {
-        if let Err(e) = run_server(connect_addr_clone, shutdown_rx) {
-            eprintln!("Server error: {}", e);
-        }
-    });
+
+    let connectaddr_clone = connectaddr.clone();
+    let (servertx, serverrx) = mpsc::channel();
+    // start server
+    thread::spawn(move || { run(connectaddr_clone, serverrx); });
     
-    Ok((connect_addr, ygg_process, shutdown_tx))
+    Ok((connectaddr, ygg, servertx))
 }
 
-/// Represents a connected user in the chat room
-#[derive(Debug, Clone)]
 struct User {
-    name: String,
-    addr: SocketAddr,
+    pub name: String,
+    pub addr: SocketAddr
 }
 
-impl User {
-    fn new(name: String, addr: SocketAddr) -> Self {
-        Self { name, addr }
-    }
-}
+fn run(connect_addr: String, serverrx: Receiver<()>) {
 
-/// Runs the main server loop handling client connections and message routing
-/// 
-/// # Arguments
-/// * `connect_addr` - The address to bind the server socket to
-/// * `shutdown_rx` - Channel receiver for shutdown signals
-/// 
-/// # Errors
-/// Returns an error if socket operations fail
-fn run_server(connect_addr: String, shutdown_rx: Receiver<()>) -> Result<()> {
-    let socket = UdpSocket::bind(&connect_addr)
-        .map_err(|e| BlossomError::Network(format!("Failed to bind to {}: {}", connect_addr, e)))?;
-    
-    // Set socket to non-blocking mode for better responsiveness
-    socket.set_nonblocking(true)
-        .map_err(|e| BlossomError::Network(format!("Failed to set socket non-blocking: {}", e)))?;
+    // wait for yggdrasil to start
+    //thread::sleep(time::Duration::from_millis(2000));
+    let socket = match UdpSocket::bind(connect_addr.clone()) {
+        Ok(s) => s,
+        Err(e) => panic!("Failed to bind to socket: {}\n{}", e, connect_addr),
+    };
 
-    let mut users: HashMap<SocketAddr, User> = HashMap::new();
-    let mut buffer = [0u8; Config::MAX_BUFFER_SIZE];
-    
+    let mut users: Vec<User> = Vec::new();
     loop {
-        // Check for shutdown signal
-        if shutdown_rx.try_recv().is_ok() {
-            break;
-        }
-        
+        let mut buffer = [0; 10240];
         match socket.recv_from(&mut buffer) {
             Ok((size, addr)) => {
-                handle_client_message(&socket, &mut users, &buffer[..size], addr)?;
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // No data available, sleep briefly to avoid busy waiting
-                thread::sleep(Duration::from_millis(10));
-                continue;
-            }
-            Err(e) => {
-                return Err(BlossomError::Network(format!("Failed to receive data: {}", e)));
-            }
+                if serverrx.try_recv().is_ok() { // exit signal check
+                    break;
+                }
+                
+                // check if the user is already in the room
+                if !users.iter().any(|user| user.addr == addr) {// user is not in the room yet
+                    // add him to the room
+                    users.push(User { name: String::from_utf8_lossy(&buffer[..size]).to_string(), addr });
+                    // send all usernames in the room to the new user
+                    for user in users.iter() {
+                        if user.addr == addr {// don't send the new user his own name
+                            continue;
+                        }
+                        // send message
+                        socket.send_to(user.name.as_bytes(), addr).unwrap();
+                    }
+                }
+                
+                // send message to all users in the room
+                for user in users.iter() { // for each user
+                    // send message
+                    socket.send_to(&buffer[..size], user.addr).unwrap();
+                }
+                
+            },
+            Err(e) => panic!("Failed to read from connection: {}", e),
         }
     }
-    
-    Ok(())
-}
-
-/// Handles a message from a client
-/// 
-/// # Arguments
-/// * `socket` - The UDP socket for sending responses
-/// * `users` - HashMap of connected users
-/// * `data` - The received message data
-/// * `addr` - The sender's address
-/// 
-/// # Errors
-/// Returns an error if network operations fail
-fn handle_client_message(
-    socket: &UdpSocket,
-    users: &mut HashMap<SocketAddr, User>,
-    data: &[u8],
-    addr: SocketAddr,
-) -> Result<()> {
-    let message = String::from_utf8_lossy(data);
-    
-    // Check if this is a new user (first message is typically just the username)
-    if !users.contains_key(&addr) {
-        let username = message.trim().to_string();
-        let new_user = User::new(username, addr);
-        
-        // Send existing usernames to the new user
-        for existing_user in users.values() {
-            send_message(socket, existing_user.name.as_bytes(), addr)?;
-        }
-        
-        users.insert(addr, new_user);
-    }
-    
-    // Broadcast message to all connected users
-    broadcast_message(socket, users, data)?;
-    
-    Ok(())
-}
-
-/// Broadcasts a message to all connected users
-/// 
-/// # Arguments
-/// * `socket` - The UDP socket for sending messages
-/// * `users` - HashMap of connected users
-/// * `data` - The message data to broadcast
-/// 
-/// # Errors
-/// Returns an error if any send operation fails
-fn broadcast_message(
-    socket: &UdpSocket,
-    users: &HashMap<SocketAddr, User>,
-    data: &[u8],
-) -> Result<()> {
-    for user in users.values() {
-        send_message(socket, data, user.addr)?;
-    }
-    Ok(())
-}
-
-/// Sends a message to a specific address
-/// 
-/// # Arguments
-/// * `socket` - The UDP socket for sending
-/// * `data` - The message data to send
-/// * `addr` - The destination address
-/// 
-/// # Errors
-/// Returns an error if the send operation fails
-fn send_message(socket: &UdpSocket, data: &[u8], addr: SocketAddr) -> Result<()> {
-    socket.send_to(data, addr)
-        .map_err(|e| BlossomError::Network(format!("Failed to send message to {}: {}", addr, e)))?;
-    Ok(())
 }
