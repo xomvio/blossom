@@ -88,7 +88,6 @@ impl App {
 
 
     pub fn run(&mut self, terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
-        let mut error: Option<BlossomError>;
         // Attempt to establish a connection to the specified address
         match self.socket.connect(self.connectaddr.clone()) {
             Ok(_) => {}
@@ -136,7 +135,7 @@ impl App {
                         let (username, message) = match received_data.split_once('|') {
                             Some((u, m)) => (u, m),
                             None => {
-                                eprintln!("Missing delimiter - treating whole buffer as message");
+                                // Missing delimiter. this is unexpected since we already check if data contains '|'
                                 // Treat entire buffer as a message from "Unknown"
                                 self.ui.history.push(Line::from(format!("[{}] {}", 
                                     "Unknown".cyan(), received_data.gray())));
@@ -144,11 +143,12 @@ impl App {
                             }
                         };
 
-                        // Add the message to the chat history - FIXED: Only show username once
-                        self.ui.history.push(Line::from(format!("[{}] {}", 
-                            username.cyan(), message.gray())));
+                        // Add the message to the chat history
+                        let username = username.cyan();
+                        let message = message.gray();
+                        self.ui.history.push(Line::from(format!("[{}] {}",username, message)));
                     } else {
-                        // This appears to be a user join notification or system message
+                        // User join notification or system message
                         // The server sends the username as first message when a new client connects
                         let username = received_data.trim();
                         if !username.is_empty() {
@@ -294,12 +294,12 @@ impl Widget for &App {
             heightleft -= room_key_height;
         }
 
-        // Users sidebar (right)
+        // Users sidebar (left)
         if self.ui.showusers && !self.ui.roomusers.is_empty() {
             let users_width = 20.min(widthleft as u16 - 2);
             widthleft -= users_width;
             
-            let mut users: Vec<Line<'static>> = self.ui.roomusers.iter().cloned().collect();
+            let users: Vec<Line<'static>> = self.ui.roomusers.iter().cloned().collect();
             Paragraph::new(users)
                 .block(block.to_owned().title(" Users "))
                 .style(style.to_owned())
@@ -307,8 +307,6 @@ impl Widget for &App {
         }
 
         // Chat history (center-right)
-        let max_history = (heightleft.saturating_sub(6)) as usize;
-        
         Paragraph::new(self.ui.history.clone())
             .block(block.to_owned().title(Line::from(" Blossom ").centered()))
             .style(style.to_owned())

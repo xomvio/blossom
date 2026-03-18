@@ -6,8 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{config::Config, error::{BlossomError, Result}};
-use crate::config::RuntimeConfig;
+use crate::{config, error::{BlossomError, Result}};
 
 /// Starts Yggdrasil with proper configuration and peer setup
 /// 
@@ -97,7 +96,7 @@ fn check_prerequisites(port: &str) -> Result<()> {
 /// # Errors
 /// Returns an error if file operations fail
 fn add_peers() -> Result<()> {
-    let config_path = Config::YGGDRASIL_CONF_PATH;
+    let config_path = config::YGGDRASIL_CONF_PATH;
     
     let content = fs::read_to_string(config_path)
         .map_err(|e| BlossomError::Config(format!("Failed to read Yggdrasil config: {}", e)))?;
@@ -106,7 +105,7 @@ fn add_peers() -> Result<()> {
         "Peers: []",
         &format!(r#"Peers: [
         {}
-    ]"#, Config::DEFAULT_YGGDRASIL_PEER)
+    ]"#, config::DEFAULT_YGGDRASIL_PEER)
     );
 
     fs::write(config_path, updated_content)
@@ -125,8 +124,8 @@ fn add_peers() -> Result<()> {
 fn run_yggdrasil() -> Result<Child> {
     let command = format!(
         "sudo yggdrasil -useconffile {} -logto {}",
-        Config::YGGDRASIL_CONF_PATH,
-        Config::YGGDRASIL_LOG_PATH
+        config::YGGDRASIL_CONF_PATH,
+        config::YGGDRASIL_LOG_PATH
     );
     
     Command::new("sh")
@@ -145,7 +144,7 @@ fn run_yggdrasil() -> Result<Child> {
 /// # Errors
 /// Returns an error if the command fails
 fn generate_conf() -> Result<()> {
-    let command = format!("sudo yggdrasil -genconf > {}", Config::YGGDRASIL_CONF_PATH);
+    let command = format!("sudo yggdrasil -genconf > {}", config::YGGDRASIL_CONF_PATH);
     
     let output = Command::new("sh")
         .args(["-c", &command])
@@ -169,7 +168,7 @@ fn generate_conf() -> Result<()> {
 /// # Errors
 /// Returns an error if the file deletion fails
 pub fn delconf() -> Result<()> {
-    let command = format!("sudo rm {}", Config::YGGDRASIL_CONF_PATH);
+    let command = format!("sudo rm {}", config::YGGDRASIL_CONF_PATH);
     
     let output = Command::new("sh")
         .args(["-c", &command])
@@ -194,8 +193,8 @@ pub fn delconf() -> Result<()> {
 /// Returns an error if Yggdrasil doesn't start within the timeout period
 pub fn wait_for_start() -> Result<()> {
     let start = Instant::now();
-    let timeout = RuntimeConfig::yggdrasil_startup_timeout();
-    let check_interval = RuntimeConfig::yggdrasil_log_check_interval();
+    let timeout = Duration::from_secs(config::YGGDRASIL_STARTUP_TIMEOUT_SECS);
+    let check_interval = Duration::from_millis(config::YGGDRASIL_LOG_CHECK_INTERVAL_MS);
     
     loop {
         thread::sleep(check_interval);
@@ -206,7 +205,7 @@ pub fn wait_for_start() -> Result<()> {
             ));
         }
         
-        match fs::File::open(Config::YGGDRASIL_LOG_PATH) {
+        match fs::File::open(config::YGGDRASIL_LOG_PATH) {
             Ok(mut file) => {
                 let mut content = String::new();
                 if file.read_to_string(&mut content).is_ok() && content.contains("Interface MTU") {
@@ -233,7 +232,7 @@ pub fn get_ipv6() -> Result<String> {
     // Wait for Yggdrasil to start
     wait_for_start()?;
 
-    let content = fs::read_to_string(Config::YGGDRASIL_LOG_PATH)
+    let content = fs::read_to_string(config::YGGDRASIL_LOG_PATH)
         .map_err(|e| BlossomError::Yggdrasil(format!("Failed to read Yggdrasil log: {}", e)))?;
 
     for line in content.lines() {
@@ -287,7 +286,7 @@ pub fn add_addr(addr: String) -> Result<()> {
 /// # Errors
 /// Returns an error if the command fails
 pub fn del_addr(addr: String) -> Result<()> {
-    let cleaned_addr = addr.replace(&format!(":{}", Config::SERVER_PORT), "");
+    let cleaned_addr = addr.replace(&format!(":{}", config::SERVER_PORT), "");
     let command = format!("sudo ip -6 addr del {} dev lo", cleaned_addr);
     
     let output = Command::new("sh")
@@ -315,7 +314,7 @@ pub fn del_addr(addr: String) -> Result<()> {
 /// # Errors
 /// Returns an error if the file deletion fails
 pub fn del_log() -> Result<()> {
-    let command = format!("sudo rm {}", Config::YGGDRASIL_LOG_PATH);
+    let command = format!("sudo rm {}", config::YGGDRASIL_LOG_PATH);
     
     let output = Command::new("sh")
         .args(["-c", &command])

@@ -8,7 +8,6 @@ mod server;
 mod yggdrasil;
 
 use app::App;
-use config::{Config, RuntimeConfig};
 use error::Result;
 
 #[derive(Parser)]
@@ -54,15 +53,15 @@ fn resolve_username(username_opt: Option<String>) -> Result<String> {
     match username_opt {
         Some(username) => Ok(username),
         None => crypt::generate_random_username()
-            .or_else(|_| Ok(Config::DEFAULT_USERNAME.to_string())),
+            .or_else(|_| Ok(config::DEFAULT_USERNAME.to_string())),
     }
 }
 
 /// Gets the appropriate default port based on whether joining or creating
 fn get_default_port(is_joining: bool) -> String {
     if is_joining {
-        Config::DEFAULT_JOIN_PORT.to_string()
+        config::DEFAULT_JOIN_PORT.to_string()
     } else {
-        Config::DEFAULT_CREATE_PORT.to_string()
+        config::DEFAULT_CREATE_PORT.to_string()
     }
 }

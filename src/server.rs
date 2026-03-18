@@ -8,7 +8,7 @@ use std::{
 };
 use std::sync::mpsc;
 
-use crate::{config::Config, error::{BlossomError, Result}, yggdrasil};
+use crate::{config, error::{BlossomError, Result}, yggdrasil};
 
 /// Creates a new server instance with Yggdrasil networking
 /// 
@@ -31,7 +31,7 @@ pub fn create(port: &str) -> Result<(String, Child, Sender<()>)> {
     yggdrasil::add_addr(connect_addr.clone())?;
 
     // Replace subnet notation with server port
-    connect_addr = connect_addr.replace("/64", &format!(":{}", Config::SERVER_PORT));
+    connect_addr = connect_addr.replace("/64", &format!(":{}", config::SERVER_PORT));
 
     let connect_addr_clone = connect_addr.clone();
     let (shutdown_tx, shutdown_rx) = mpsc::channel();
@@ -76,7 +76,7 @@ fn run_server(connect_addr: String, shutdown_rx: Receiver<()>) -> Result<()> {
         .map_err(|e| BlossomError::Network(format!("Failed to set socket non-blocking: {}", e)))?;
 
     let mut users: HashMap<SocketAddr, User> = HashMap::new();
-    let mut buffer = [0u8; Config::MAX_BUFFER_SIZE];
+    let mut buffer = [0u8; config::MAX_BUFFER_SIZE];
     
     loop {
         // Check for shutdown signal

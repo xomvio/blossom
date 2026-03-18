@@ -1,7 +1,7 @@
 //use aes_gcm::{aead::{Aead, AeadCore, Key, KeyInit, OsRng}, Aes256Gcm, Nonce};
 use rand::{rngs::OsRng, TryRngCore};
 
-use crate::{config::Config, error::Result};
+use crate::{config, error::Result};
 
 /// Converts a room key string to a fixed 32-byte array for cryptographic use
 /// 
@@ -76,5 +76,5 @@ pub fn generate_random_string(length: usize) -> Result<String> {
 /// # Errors
 /// Returns an error if the random number generator fails
 pub fn generate_random_username() -> Result<String> {
-    generate_random_string(Config::DEFAULT_USERNAME_LENGTH)
+    generate_random_string(config::DEFAULT_USERNAME_LENGTH)
 }
