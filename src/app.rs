@@ -303,7 +303,6 @@ impl Widget for &App {
             widthleft -= users_width;
             
             let users: Vec<Line<'static>> = self.ui.roomusers.iter().cloned().collect();
-            let users: Vec<Line<'static>> = self.ui.roomusers.iter().cloned().collect();
             Paragraph::new(users)
                 .block(block.to_owned().title(" Users "))
                 .style(style.to_owned())
@@ -311,10 +310,14 @@ impl Widget for &App {
         }
 
         // Chat history (center-right)
+        let chat_height = heightleft - 4;
+        let chat_inner_height = chat_height - 2; // lines of chat history = window height - message input height - border height
+        let scroll_offset = (self.ui.history.len() as u16).saturating_sub(chat_inner_height);
         Paragraph::new(self.ui.history.clone())
             .block(block.to_owned().title(Line::from(" Blossom ").centered()))
             .style(style.to_owned())
-            .render(Rect { x: area.width - widthleft, y: area.height - heightleft, width: widthleft, height: heightleft.saturating_sub(4) }, buf);
+            .scroll((scroll_offset, 0))
+            .render(Rect { x: area.width - widthleft, y: area.height - heightleft, width: widthleft, height: chat_height }, buf);
 
         // Message input (bottom)
         let input_height = 4.min(heightleft as u16);
