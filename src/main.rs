@@ -8,7 +8,7 @@ mod server;
 mod yggdrasil;
 
 use app::App;
-use config::{Config, RuntimeConfig};
+use config::Config;
 use error::Result;
 
 #[derive(Parser)]
