@@ -53,7 +53,9 @@ impl App {
 
     pub fn join_room(username: String, roomkey: String, port: String) -> Result<Self> {
         let yggdr = yggdrasil::start(&port)?;
-        let _ = yggdrasil::get_ipv6();
+        if let Err(e) = yggdrasil::get_ipv6() {
+            eprintln!("Warning: Yggdrasil may not be ready: {}", e);
+        }
 
         let decodedroomkey = match BASE64_STANDARD.decode(roomkey.clone()) {
             Ok(decoded) => decoded,
@@ -135,18 +137,19 @@ impl App {
                         let (username, message) = match received_data.split_once('|') {
                             Some((u, m)) => (u, m),
                             None => {
-                                // Missing delimiter. this is unexpected since we already check if data contains '|'
-                                // Treat entire buffer as a message from "Unknown"
-                                self.ui.history.push(Line::from(format!("[{}] {}", 
-                                    "Unknown".cyan(), received_data.gray())));
+                                eprintln!("Missing delimiter - treating whole buffer as message");
+                                self.ui.history.push(Line::from(vec![
+                                    "[Unknown] ".cyan(),
+                                    received_data.to_owned().gray(),
+                                ]));
                                 continue;
                             }
                         };
 
-                        // Add the message to the chat history
-                        let username = username.cyan();
-                        let message = message.gray();
-                        self.ui.history.push(Line::from(format!("[{}] {}",username, message)));
+                        self.ui.history.push(Line::from(vec![
+                            format!("[{}] ", username).cyan(),
+                            message.to_owned().gray(),
+                        ]));
                     } else {
                         // User join notification or system message
                         // The server sends the username as first message when a new client connects
@@ -299,6 +302,7 @@ impl Widget for &App {
             let users_width = 20.min(widthleft as u16 - 2);
             widthleft -= users_width;
             
+            let users: Vec<Line<'static>> = self.ui.roomusers.iter().cloned().collect();
             let users: Vec<Line<'static>> = self.ui.roomusers.iter().cloned().collect();
             Paragraph::new(users)
                 .block(block.to_owned().title(" Users "))
