@@ -119,45 +119,45 @@ impl App {
             // Attempt to receive data from the socket
             match self.socket.recv_from(buffer.as_mut()) {
                 Ok((size, _)) => {
-                    // Check if this is a user join notification (first message from new client)
-                    // In the server implementation, first messages are usernames only
-                    // We can distinguish by checking for pipe delimiter which indicates regular chat messages
-                    let received_data = match String::from_utf8(buffer[..size].to_vec()) {
-                        Ok(data) => data,
-                        Err(_) => {
-                            eprintln!("Unicode error in received data - dropping");
-                            continue;
-                        }
-                    };
+                    if size == 0 { continue; }
 
-                    // If this message contains a pipe, it's a chat message (username|message)
-                    // Otherwise, treat as user join notification or other system messages
-                    if received_data.contains('|') {
-                        // This is a regular chat message
-                        let (username, message) = match received_data.split_once('|') {
-                            Some((u, m)) => (u, m),
-                            None => {
-                                eprintln!("Missing delimiter - treating whole buffer as message");
+                    match buffer[0] {
+                        b'J' => {
+                            // Join notification: J{username}
+                            let username = match String::from_utf8(buffer[1..size].to_vec()) {
+                                Ok(u) => u.trim().to_string(),
+                                Err(_) => { eprintln!("Unicode error in join message"); continue; }
+                            };
+                            if !username.is_empty() {
+                                self.ui.roomusers.push(Line::from(username.clone()).red());
                                 self.ui.history.push(Line::from(vec![
-                                    "[Unknown] ".cyan(),
-                                    received_data.to_owned().gray(),
+                                    username.red(),
+                                    " joined the room".red(),
                                 ]));
-                                continue;
                             }
-                        };
-
-                        self.ui.history.push(Line::from(vec![
-                            format!("[{}] ", username).cyan(),
-                            message.to_owned().gray(),
-                        ]));
-                    } else {
-                        // User join notification or system message
-                        // The server sends the username as first message when a new client connects
-                        let username = received_data.trim();
-                        if !username.is_empty() {
-                            // Add the new user to the room users list and history
-                            self.ui.roomusers.push(Line::from(username.to_string()).red());
-                            self.ui.history.append(&mut vec![Line::from(vec![username.to_owned().red(), " joined the room".red()])]);
+                        }
+                        b'M' => {
+                            // Chat message: M{username}\x00{message}
+                            let data = &buffer[1..size];
+                            if let Some(sep) = data.iter().position(|&b| b == 0) {
+                                let username = match String::from_utf8(data[..sep].to_vec()) {
+                                    Ok(u) => u,
+                                    Err(_) => { eprintln!("Unicode error in username"); continue; }
+                                };
+                                let message = match String::from_utf8(data[sep + 1..].to_vec()) {
+                                    Ok(m) => m,
+                                    Err(_) => { eprintln!("Unicode error in message"); continue; }
+                                };
+                                self.ui.history.push(Line::from(vec![
+                                    format!("[{}] ", username).cyan(),
+                                    message.gray(),
+                                ]));
+                            } else {
+                                eprintln!("Malformed chat message: missing null separator");
+                            }
+                        }
+                        _ => {
+                            eprintln!("Unknown message type: 0x{:02x}", buffer[0]);
                         }
                     }
                 }
@@ -185,8 +185,7 @@ impl App {
             }
         }
         
-        // Perform a graceful shutdown of the application
-
+        // Graceful shutdown
         // Terminate the yggdrasil process
         if let Err(e) = self.yggdr.kill() {
             eprintln!("Failed to terminate yggdrasil process: {}", e);
@@ -258,7 +257,7 @@ impl App {
                 
                 if self.ui.input.is_empty() { return; }
 
-                let msg = format!("{}|{}", self.ui.username, self.ui.input);
+                let msg = format!("M{}\x00{}", self.ui.username, self.ui.input);
                 match self.socket.send(msg.as_bytes()) {
                     Ok(_) => {},
                     Err(e) => eprintln!("Failed to send message: {}", e),

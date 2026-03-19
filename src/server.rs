@@ -123,18 +123,22 @@ fn handle_client_message(
     // Check if this is a new user (first message is typically just the username)
     if !users.contains_key(&addr) {
         let username = message.trim().to_string();
-        let new_user = User::new(username, addr);
-        
-        // Send existing usernames to the new user
+
+        // Send existing users' names to the new user as join notifications
         for existing_user in users.values() {
-            send_message(socket, existing_user.name.as_bytes(), addr)?;
+            let join_msg = format!("J{}", existing_user.name);
+            send_message(socket, join_msg.as_bytes(), addr)?;
         }
-        
-        users.insert(addr, new_user);
+
+        users.insert(addr, User::new(username.clone(), addr));
+
+        // Broadcast the new user's join to all clients (including themselves)
+        let join_broadcast = format!("J{}", username);
+        broadcast_message(socket, users, join_broadcast.as_bytes())?;
+    } else {
+        // Chat message — forward as-is (already has M prefix from client)
+        broadcast_message(socket, users, data)?;
     }
-    
-    // Broadcast message to all connected users
-    broadcast_message(socket, users, data)?;
     
     Ok(())
 }
