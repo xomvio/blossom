@@ -1,7 +1,7 @@
 # Maintainer: xomvio <xomvio at proton dot me>
 
 pkgname=blossom
-pkgver=0.0.2
+pkgver=0.0.4
 pkgrel=1
 pkgdesc='Secure decentralized chat via Yggdrasil network'
 url="https://github.com/xomvio/$pkgname"
