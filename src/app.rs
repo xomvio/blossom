@@ -3,7 +3,7 @@ use std::{io, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use ratatui::{buffer::Buffer, crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
 
-use crate::{crypt, server, yggdrasil, error::{Result, BlossomError}};
+use crate::{codec, server, yggdrasil, error::{Result, BlossomError}};
 
 pub struct App {
     ui: UI,
@@ -30,7 +30,7 @@ impl App {
 
     pub fn create_room(username: String, port: String) -> Result<Self> {
         let (connectaddr, yggdr, servershutter) = server::create(&port)?;
-        let roomkeybytes = crypt::convert_to_32_bytes(&connectaddr);
+        let roomkeybytes = codec::convert_to_32_bytes(&connectaddr);
         let socket = UdpSocket::bind(format!("[::]:{}", port))?;
         
         Ok(Self {
@@ -64,7 +64,7 @@ impl App {
 
         // Convert 32-byte array back to string (trim trailing 'g' padding)
         let connectaddr = match String::from_utf8(decodedroomkey.clone()) {
-            Ok(decoded_str) => crypt::strip_padding(&decoded_str.as_bytes()),
+            Ok(decoded_str) => codec::strip_padding(&decoded_str.as_bytes()),
             Err(e) => return Err(BlossomError::InvalidData(format!("UTF-8 conversion error: {}", e)))
         };
         

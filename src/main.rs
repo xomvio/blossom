@@ -2,7 +2,7 @@ use clap::Parser;
 
 mod app;
 mod config;
-mod crypt;
+mod codec;
 mod error;
 mod server;
 mod yggdrasil;
@@ -52,7 +52,7 @@ fn run() -> Result<()> {
 fn resolve_username(username_opt: Option<String>) -> Result<String> {
     match username_opt {
         Some(username) => Ok(username),
-        None => crypt::generate_random_username()
+        None => codec::generate_random_username()
             .or_else(|_| Ok(config::DEFAULT_USERNAME.to_string())),
     }
 }

@@ -17,10 +17,10 @@ pub fn convert_to_32_bytes(roomkey: &str) -> [u8; 32] {
     const PADDING_BYTE: u8 = 103; // ASCII 'g'
     let roomkey_bytes = roomkey.as_bytes();
     let mut result = [PADDING_BYTE; 32];
-    
+
     let copy_len = roomkey_bytes.len().min(32);
     result[..copy_len].copy_from_slice(&roomkey_bytes[..copy_len]);
-    
+
     result
 }
 
@@ -41,18 +41,8 @@ pub fn strip_padding(bytes: &[u8]) -> String {
     String::from_utf8_lossy(&bytes[..trimmed_len]).to_string()
 }
 
-/// Generates a cryptographically secure random alphanumeric string
-/// 
-/// The generated string contains characters from [0-9A-Za-z].
-/// 
-/// # Arguments
-/// * `length` - The desired length of the random string
-/// 
-/// # Returns
-/// A random alphanumeric string of the specified length
-/// 
-/// # Errors
-/// Returns an error if the random number generator fails
+/// Generates a random alphanumeric string of the given length.
+/// Characters are drawn from [0-9A-Za-z].
 pub fn generate_random_string(length: usize) -> Result<String> {
     const CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     
@@ -68,13 +58,7 @@ pub fn generate_random_string(length: usize) -> Result<String> {
     Ok(random_string)
 }
 
-/// Generates a random username with the default length
-/// 
-/// # Returns
-/// A random alphanumeric username
-/// 
-/// # Errors
-/// Returns an error if the random number generator fails
+/// Generates a random username using the configured default length.
 pub fn generate_random_username() -> Result<String> {
     generate_random_string(config::DEFAULT_USERNAME_LENGTH)
 }
