@@ -10,9 +10,6 @@ use crate::{config, error::Result};
 /// 
 /// # Arguments
 /// * `roomkey` - The room key string to convert
-/// 
-/// # Returns
-/// A 32-byte array suitable for cryptographic operations
 pub fn convert_to_32_bytes(roomkey: &str) -> [u8; 32] {
     const PADDING_BYTE: u8 = 103; // ASCII 'g'
     let roomkey_bytes = roomkey.as_bytes();
@@ -27,7 +24,6 @@ pub fn convert_to_32_bytes(roomkey: &str) -> [u8; 32] {
 /// Strips trailing padding bytes (ASCII 'g' = 103) from a 32-byte array
 /// 
 /// This is the inverse of convert_to_32_bytes, used to reconstruct strings
-/// that were padded for cryptographic operations.
 /// 
 /// # Arguments
 /// * `bytes` - A 32-byte array potentially containing trailing 'g' padding

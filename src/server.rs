@@ -35,14 +35,19 @@ pub fn create(port: &str) -> Result<(String, Child, Sender<()>)> {
 
     let connect_addr_clone = connect_addr.clone();
     let (shutdown_tx, shutdown_rx) = mpsc::channel();
-    
+    let (ready_tx, ready_rx) = mpsc::channel();
+
     // Start server in background thread
     thread::spawn(move || {
-        if let Err(e) = run_server(connect_addr_clone, shutdown_rx) {
+        if let Err(e) = run_server(connect_addr_clone, shutdown_rx, ready_tx) {
             eprintln!("Server error: {}", e);
         }
     });
-    
+
+    // Wait until the server has bound its socket
+    ready_rx.recv()
+        .map_err(|_| BlossomError::Network("Server thread failed to start".to_string()))?;
+
     Ok((connect_addr, ygg_process, shutdown_tx))
 }
 
@@ -67,13 +72,16 @@ impl User {
 /// 
 /// # Errors
 /// Returns an error if socket operations fail
-fn run_server(connect_addr: String, shutdown_rx: Receiver<()>) -> Result<()> {
+fn run_server(connect_addr: String, shutdown_rx: Receiver<()>, ready_tx: Sender<()>) -> Result<()> {
     let socket = UdpSocket::bind(&connect_addr)
         .map_err(|e| BlossomError::Network(format!("Failed to bind to {}: {}", connect_addr, e)))?;
-    
+
     // Set socket to non-blocking mode for better responsiveness
     socket.set_nonblocking(true)
         .map_err(|e| BlossomError::Network(format!("Failed to set socket non-blocking: {}", e)))?;
+
+    // Signal that the server is bound and ready to receive
+    let _ = ready_tx.send(());
 
     let mut users: HashMap<SocketAddr, User> = HashMap::new();
     let mut buffer = [0u8; config::MAX_BUFFER_SIZE];

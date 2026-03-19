@@ -1,5 +1,5 @@
 use core::time;
-use std::{io, net::UdpSocket, process::Child, sync::mpsc::Sender, thread};
+use std::{io, net::UdpSocket, process::Child, sync::mpsc::Sender};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use ratatui::{buffer::Buffer, crossterm::event::{self, poll, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, layout::Rect, style::Stylize, symbols::border, text::Line, widgets::{Block, Paragraph, Widget}, Frame};
 
@@ -107,9 +107,7 @@ impl App {
 
         let mut buffer = [0; 10240]; // Storing incoming data here. this limit may change
 
-        thread::sleep(time::Duration::from_millis(3000));
-
-        // Send the username as the initial message to the server (null-byte delimited)
+        // Send the username as the initial message to the server
         if self.socket.send(self.ui.username.as_bytes()).is_err() {
             eprintln!("Failed to send username");
         }
