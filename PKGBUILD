@@ -10,7 +10,7 @@ arch=('x86_64')
 depends=('gcc-libs' 'glibc')
 makedepends=('cargo')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('51e8558f6bda6ee37c6a31fd4154be4597e3258e0bfdd5250019aa693ff8feb4')
+sha256sums=('a7446e1931dba8b8fe80636a4d277ad3820ecc4c6013e9354347fd469c683614')
 
 prepare() {
     cd "$pkgname-$pkgver"
