@@ -1,5 +1,4 @@
-//use aes_gcm::{aead::{Aead, AeadCore, Key, KeyInit, OsRng}, Aes256Gcm, Nonce};
-use rand::{rngs::OsRng, TryRngCore};
+use rand::{TryRng, rngs::SysRng};
 
 use crate::{config, error::Result};
 
@@ -42,7 +41,7 @@ pub fn strip_padding(bytes: &[u8]) -> String {
 pub fn generate_random_string(length: usize) -> Result<String> {
     const CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     
-    let mut rng = OsRng;
+    let mut rng = SysRng;
     let mut bytes = vec![0u8; length];
     rng.try_fill_bytes(&mut bytes)?;
 

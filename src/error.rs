@@ -60,9 +60,8 @@ impl From<std::string::FromUtf8Error> for BlossomError {
         BlossomError::InvalidData(format!("UTF-8 conversion error: {}", err))
     }
 }
-
-impl From<rand::rand_core::OsError> for BlossomError {
-    fn from(err: rand::rand_core::OsError) -> Self {
+impl From<rand::rngs::SysError> for BlossomError {
+    fn from(err: rand::rngs::SysError) -> Self {
         BlossomError::Crypto(format!("Random generation error: {}", err))
     }
 }
